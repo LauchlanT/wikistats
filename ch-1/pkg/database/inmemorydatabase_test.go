@@ -19,7 +19,7 @@ type wantState struct {
 	servers  int
 }
 
-func assertStats(t *testing.T, db *InMemory, want wantState) {
+func assertStats(t *testing.T, db *InMemoryDatabase, want wantState) {
 	t.Helper()
 	gotMessages, gotUsers, gotBots, gotServers := db.GetStats()
 	if gotMessages != want.messages {
@@ -91,7 +91,7 @@ func TestUpdateDatabase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := NewInMemory()
+			db := NewInMemoryDatabase()
 			for _, op := range tt.updates {
 				db.UpdateDatabase(op.user, op.server, op.isBot)
 			}
@@ -124,7 +124,7 @@ func TestGetStats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := NewInMemory()
+			db := NewInMemoryDatabase()
 			for _, op := range tt.updates {
 				db.UpdateDatabase(op.user, op.server, op.isBot)
 			}
@@ -162,7 +162,7 @@ func TestConcurrentExecution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := NewInMemory()
+			db := NewInMemoryDatabase()
 			var wg sync.WaitGroup
 			wg.Add(tt.goroutines)
 			for i := 0; i < tt.goroutines; i++ {

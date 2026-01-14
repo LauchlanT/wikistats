@@ -16,7 +16,7 @@ import (
 
 func main() {
 	const streamURL string = "https://stream.wikimedia.org/v2/stream/recentchange"
-	db := database.NewInMemory()
+	db := database.NewInMemoryDatabase()
 	router := api.NewRouter(api.NewService(db))
 	consumer := consumer.NewWikimediaConsumer(streamURL)
 	server := &http.Server{

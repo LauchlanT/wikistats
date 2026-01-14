@@ -2,7 +2,7 @@ package database
 
 import "sync"
 
-type InMemory struct {
+type InMemoryDatabase struct {
 	lock         sync.Mutex
 	messageCount int
 	users        map[string]struct{}
@@ -10,15 +10,15 @@ type InMemory struct {
 	servers      map[string]struct{}
 }
 
-func NewInMemory() *InMemory {
-	return &InMemory{
+func NewInMemoryDatabase() *InMemoryDatabase {
+	return &InMemoryDatabase{
 		users:   make(map[string]struct{}),
 		bots:    make(map[string]struct{}),
 		servers: make(map[string]struct{}),
 	}
 }
 
-func (d *InMemory) UpdateDatabase(user string, server string, isBot bool) {
+func (d *InMemoryDatabase) UpdateDatabase(user string, server string, isBot bool) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -31,7 +31,7 @@ func (d *InMemory) UpdateDatabase(user string, server string, isBot bool) {
 	d.servers[server] = struct{}{}
 }
 
-func (d *InMemory) GetStats() (messages int, users int, bots int, servers int) {
+func (d *InMemoryDatabase) GetStats() (messages int, users int, bots int, servers int) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
