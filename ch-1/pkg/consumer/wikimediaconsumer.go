@@ -13,29 +13,30 @@ import (
 )
 
 type WikimediaConsumer struct {
-	url string
+	url    string
+	client *http.Client
 }
 
 func NewWikimediaConsumer(streamURL string) *WikimediaConsumer {
 	return &WikimediaConsumer{
-		url: streamURL,
+		url:    streamURL,
+		client: &http.Client{},
 	}
 }
 
 func (c *WikimediaConsumer) Connect() (io.Reader, error) {
-	client := &http.Client{}
 	req, err := http.NewRequest("GET", c.url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create request: %w", err)
+		return nil, fmt.Errorf("creating http request: %w", err)
 	}
 	// Wikimedia requires an identifying user agent
 	req.Header.Set("User-Agent", "REDspace workshop (lauchlan.toal@redspace.com)")
-	resp, err := client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to connect: %w", err)
+		return nil, fmt.Errorf("connecting to %s: %w", c.url, err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Error connecting to stream: %d %s", resp.StatusCode, resp.Status)
+		return nil, fmt.Errorf("server response: %d %s", resp.StatusCode, resp.Status)
 	}
 	fmt.Println("Connected to Wikimedia Stream")
 	return resp.Body, nil
