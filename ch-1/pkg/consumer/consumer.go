@@ -13,7 +13,7 @@ import (
 
 const streamURL string = "https://stream.wikimedia.org/v2/stream/recentchange"
 
-func ConsumeMessages(db database.Database) {
+func ConsumeMessages(db database.Executer) {
 	// Connect to Wikimedia stream
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", streamURL, nil)

@@ -7,10 +7,10 @@ import (
 )
 
 type Service struct {
-	db database.Database
+	db database.Executer
 }
 
-func NewService(db database.Database) *Service {
+func NewService(db database.Executer) *Service {
 	return &Service{
 		db: db,
 	}

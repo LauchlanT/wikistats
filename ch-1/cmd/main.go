@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	db := database.NewDatabase()
+	db := database.NewInMemory()
 	router := api.NewRouter(api.NewService(db))
 	server := &http.Server{
 		Addr:         ":7000",
