@@ -15,8 +15,10 @@ import (
 )
 
 func main() {
+	const streamURL string = "https://stream.wikimedia.org/v2/stream/recentchange"
 	db := database.NewInMemory()
 	router := api.NewRouter(api.NewService(db))
+	consumer := consumer.NewWikimediaConsumer(streamURL)
 	server := &http.Server{
 		Addr:         ":7000",
 		Handler:      router,
@@ -37,7 +39,13 @@ func main() {
 	}()
 	go func() {
 		log.Println("Starting consumer")
-		consumer.ConsumeMessages(db)
+		stream, err := consumer.Connect()
+		if err != nil {
+			log.Fatalf("Consumer failed to start: %v", err)
+		}
+		if err = consumer.Consume(stream, db); err != nil {
+			log.Fatalf("Consumer failed: %v", err)
+		}
 	}()
 
 	// Gracefully handle shutdown requests
