@@ -2,7 +2,7 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 Build the Docker image with ```docker build -t wikistats:latest .```
 
-Run the container with ```docker run -d --rm -p 7000:7000 --name wikistats wikistats:latest```
+Run the container with ```docker run -d --rm -p 7000:7000 --name wikistats wikistats:latest``` (or change the port number if you've changed the .env API_PORT value)
 
 Stop the container with ```docker stop wikistats```
 
