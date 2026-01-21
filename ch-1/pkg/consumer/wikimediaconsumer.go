@@ -55,7 +55,7 @@ func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("server response: %d %s", resp.StatusCode, resp.Status)
 	}
-	fmt.Println("Connected to Wikimedia Stream", c.url)
+	log.Println("Connected to Wikimedia Stream", c.url)
 	return resp.Body, nil
 }
 
