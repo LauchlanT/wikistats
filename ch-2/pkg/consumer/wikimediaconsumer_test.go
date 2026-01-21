@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 	"wikistats/pkg/database"
+	"wikistats/pkg/utils"
 
 	"golang.org/x/net/http2"
 )
+
+const envFile string = "../../.test_env"
 
 // Mock http.RoundTripper to intercept network calls and replace with test responses
 type mockRoundTripper struct {
@@ -71,6 +74,9 @@ func TestConnect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if err := utils.LoadEnv(envFile); err != nil {
+				t.Errorf("Could not load env file: %v", err)
+			}
 			consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
 			if err != nil {
 				t.Fatalf("Error initializing consumer: %v", err)
@@ -144,6 +150,9 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if err := utils.LoadEnv(envFile); err != nil {
+				t.Errorf("Could not load env file: %v", err)
+			}
 			db := database.NewInMemoryDatabase()
 			consumer, err := NewWikimediaConsumer("test-url")
 			if err != nil {
@@ -186,6 +195,9 @@ func (m *SequentialMockTransport) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func TestReconnect(t *testing.T) {
+	if err := utils.LoadEnv(envFile); err != nil {
+		t.Errorf("Could not load env file: %v", err)
+	}
 	consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
 	if err != nil {
 		t.Fatalf("Error initializing consumer: %v", err)

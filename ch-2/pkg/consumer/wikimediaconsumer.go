@@ -11,6 +11,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 	"wikistats/pkg/database"
@@ -31,13 +33,18 @@ func NewWikimediaConsumer(streamURL string) (*WikimediaConsumer, error) {
 	if err := http2.ConfigureTransport(transport); err != nil {
 		return nil, err
 	}
+	reconnectDelay, err := strconv.Atoi(os.Getenv("RECONNECTION_DELAY"))
+	if err != nil {
+		log.Printf("Error converting %s to int, defaulting to 120", os.Getenv("RECONNECTION_DELAY"))
+		reconnectDelay = 120
+	}
 
 	return &WikimediaConsumer{
 		url: streamURL,
 		client: &http.Client{
 			Transport: transport,
 		},
-		reconnectionDelay: 2 * time.Minute,
+		reconnectionDelay: time.Duration(reconnectDelay) * time.Second,
 	}, nil
 }
 

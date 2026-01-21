@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,22 +15,30 @@ import (
 	"wikistats/pkg/api"
 	"wikistats/pkg/consumer"
 	"wikistats/pkg/database"
+	"wikistats/pkg/utils"
 )
 
 func main() {
-	const streamURL string = "https://stream.wikimedia.org/v2/stream/recentchange"
+	// Load environment variables from .env file or specified override
+	envFile := flag.String("env", ".env", "override path to environment variables file")
+	flag.Parse()
+	if *envFile != "" {
+		if err := utils.LoadEnv(*envFile); err != nil {
+			log.Printf("Could not load env file: %v", err)
+		}
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	db := database.NewInMemoryDatabase()
 	router := api.NewRouter(api.NewService(db))
-	streamConsumer, err := consumer.NewWikimediaConsumer(streamURL)
+	streamConsumer, err := consumer.NewWikimediaConsumer(os.Getenv("STREAM_URL"))
 	if err != nil {
 		log.Fatalf("Error initializing consumer: %v", err)
 	}
 	server := &http.Server{
-		Addr:         ":7000",
+		Addr:         fmt.Sprintf(":%s", os.Getenv("API_PORT")),
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -41,7 +51,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Println("Server starting on port 7000")
+		log.Println("Server starting on port", os.Getenv("API_PORT"))
 		if err := server.ListenAndServe(); err != nil &&
 			!errors.Is(err, http.ErrServerClosed) && !errors.Is(err, context.Canceled) {
 			log.Printf("Server failed to start: %v", err)
