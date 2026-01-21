@@ -3,26 +3,27 @@ package database
 import "sync"
 
 type InMemoryDatabase struct {
-	lock         sync.Mutex
-	messageCount int
-	users        map[string]struct{}
-	bots         map[string]struct{}
-	servers      map[string]struct{}
+	lock     sync.Mutex
+	messages map[string]struct{}
+	users    map[string]struct{}
+	bots     map[string]struct{}
+	servers  map[string]struct{}
 }
 
 func NewInMemoryDatabase() *InMemoryDatabase {
 	return &InMemoryDatabase{
-		users:   make(map[string]struct{}),
-		bots:    make(map[string]struct{}),
-		servers: make(map[string]struct{}),
+		messages: make(map[string]struct{}),
+		users:    make(map[string]struct{}),
+		bots:     make(map[string]struct{}),
+		servers:  make(map[string]struct{}),
 	}
 }
 
-func (d *InMemoryDatabase) UpdateDatabase(user string, server string, isBot bool) {
+func (d *InMemoryDatabase) UpdateDatabase(id string, user string, server string, isBot bool) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	d.messageCount += 1
+	d.messages[id] = struct{}{}
 	if isBot {
 		d.bots[user] = struct{}{}
 	} else {
@@ -35,5 +36,5 @@ func (d *InMemoryDatabase) GetStats() (messages int, users int, bots int, server
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	return d.messageCount, len(d.users), len(d.bots), len(d.servers)
+	return len(d.messages), len(d.users), len(d.bots), len(d.servers)
 }

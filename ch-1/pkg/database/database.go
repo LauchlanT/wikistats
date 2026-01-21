@@ -1,6 +1,6 @@
 package database
 
 type Executer interface {
-	UpdateDatabase(string, string, bool)
-	GetStats() (int, int, int, int)
+	UpdateDatabase(messageID string, username string, servername string, isBot bool)
+	GetStats() (messages int, users int, bots int, servers int)
 }

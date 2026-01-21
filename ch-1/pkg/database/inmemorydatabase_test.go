@@ -7,6 +7,7 @@ import (
 )
 
 type updateArgs struct {
+	id     string
 	user   string
 	server string
 	isBot  bool
@@ -45,38 +46,38 @@ func TestUpdateDatabase(t *testing.T) {
 		{
 			name: "Single user",
 			updates: []updateArgs{
-				{user: "alice", server: "server1", isBot: false},
+				{id: "msg1", user: "alice", server: "server1", isBot: false},
 			},
 			want: wantState{messages: 1, users: 1, bots: 0, servers: 1},
 		},
 		{
 			name: "Single bot",
 			updates: []updateArgs{
-				{user: "bob", server: "server1", isBot: true},
+				{id: "msg1", user: "bob", server: "server1", isBot: true},
 			},
 			want: wantState{messages: 1, users: 0, bots: 1, servers: 1},
 		},
 		{
 			name: "Duplicate users, bots, and servers",
 			updates: []updateArgs{
-				{user: "alice", server: "server1", isBot: false},
-				{user: "alice", server: "server1", isBot: false},
-				{user: "alice", server: "server2", isBot: false},
-				{user: "bob", server: "server1", isBot: true},
-				{user: "bob", server: "server2", isBot: true},
-				{user: "bob", server: "server3", isBot: true},
+				{id: "msg1", user: "alice", server: "server1", isBot: false},
+				{id: "msg2", user: "alice", server: "server1", isBot: false},
+				{id: "msg3", user: "alice", server: "server2", isBot: false},
+				{id: "msg4", user: "bob", server: "server1", isBot: true},
+				{id: "msg5", user: "bob", server: "server2", isBot: true},
+				{id: "msg6", user: "bob", server: "server3", isBot: true},
 			},
 			want: wantState{messages: 6, users: 1, bots: 1, servers: 3},
 		},
 		{
 			name: "Distinct users, bots, and servers",
 			updates: []updateArgs{
-				{user: "alice", server: "server1", isBot: false},
-				{user: "bob", server: "server2", isBot: true},
-				{user: "corey", server: "server3", isBot: false},
-				{user: "diane", server: "server5", isBot: false},
-				{user: "elaine", server: "server8", isBot: false},
-				{user: "frank", server: "server13", isBot: false},
+				{id: "msg1", user: "alice", server: "server1", isBot: false},
+				{id: "msg2", user: "bob", server: "server2", isBot: true},
+				{id: "msg3", user: "corey", server: "server3", isBot: false},
+				{id: "msg4", user: "diane", server: "server5", isBot: false},
+				{id: "msg5", user: "elaine", server: "server8", isBot: false},
+				{id: "msg6", user: "frank", server: "server13", isBot: false},
 			},
 			want: wantState{messages: 6, users: 5, bots: 1, servers: 6},
 		},
@@ -93,7 +94,7 @@ func TestUpdateDatabase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := NewInMemoryDatabase()
 			for _, op := range tt.updates {
-				db.UpdateDatabase(op.user, op.server, op.isBot)
+				db.UpdateDatabase(op.id, op.user, op.server, op.isBot)
 			}
 			assertStats(t, db, tt.want)
 		})
@@ -114,9 +115,9 @@ func TestGetStats(t *testing.T) {
 		{
 			name: "Populated database",
 			updates: []updateArgs{
-				{user: "alice", server: "server1", isBot: false},
-				{user: "bob", server: "server1", isBot: true},
-				{user: "corey", server: "server2", isBot: false},
+				{id: "msg1", user: "alice", server: "server1", isBot: false},
+				{id: "msg2", user: "bob", server: "server1", isBot: true},
+				{id: "msg3", user: "corey", server: "server2", isBot: false},
 			},
 			want: wantState{messages: 3, users: 2, bots: 1, servers: 2},
 		},
@@ -126,7 +127,7 @@ func TestGetStats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := NewInMemoryDatabase()
 			for _, op := range tt.updates {
-				db.UpdateDatabase(op.user, op.server, op.isBot)
+				db.UpdateDatabase(op.id, op.user, op.server, op.isBot)
 			}
 			assertStats(t, db, tt.want)
 		})
@@ -166,12 +167,13 @@ func TestConcurrentExecution(t *testing.T) {
 			var wg sync.WaitGroup
 			wg.Add(tt.goroutines)
 			for i := 0; i < tt.goroutines; i++ {
-				go func(id int) {
+				go func(routine int) {
 					defer wg.Done()
 					for j := 0; j < tt.opsPerGoroutine; j++ {
-						user := fmt.Sprintf("user-%d-%d", id, j)
+						id := fmt.Sprintf("message-%d-%d", routine, j)
+						user := fmt.Sprintf("user-%d-%d", routine, j)
 						server := "server1"
-						db.UpdateDatabase(user, server, false)
+						db.UpdateDatabase(id, user, server, false)
 					}
 				}(i)
 			}

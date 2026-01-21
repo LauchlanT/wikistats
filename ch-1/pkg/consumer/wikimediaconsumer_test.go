@@ -1,12 +1,18 @@
 package consumer
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 	"wikistats/pkg/database"
+
+	"golang.org/x/net/http2"
 )
 
 // Mock http.RoundTripper to intercept network calls and replace with test responses
@@ -65,11 +71,14 @@ func TestConnect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			consumer := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
+			consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
+			if err != nil {
+				t.Fatalf("Error initializing consumer: %v", err)
+			}
 			consumer.client.Transport = &mockRoundTripper{
 				roundTripFunc: tt.setupMock(),
 			}
-			r, err := consumer.Connect()
+			r, err := consumer.Connect(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Connect() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -98,8 +107,8 @@ func TestConsume(t *testing.T) {
 		{
 			name: "Valid stream data",
 			inputData: `
-data: {"user": "alice", "server_url": "en.wikipedia.org", "bot": false}
-data: {"user": "bob", "server_url": "fr.wikipedia.org", "bot": true}
+data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot": false}
+data: {"meta": { "id": "msg2" }, "user": "bob", "server_url": "server2", "bot": true}
 `,
 			wantErr: false,
 			want:    wantState{messages: 2, users: 1, bots: 1, servers: 2},
@@ -107,9 +116,9 @@ data: {"user": "bob", "server_url": "fr.wikipedia.org", "bot": true}
 		{
 			name: "Malformed JSON is skipped",
 			inputData: `
-data: {"user": "alice", "server_url": "en.wikipedia.org", "bot": false}
+data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot": false}
 data: THIS_IS_NOT_JSON
-data: {"user": "corey", "server_url": "en.wikipedia.org", "bot": false}
+data: {"meta": { "id": "msg2" }, "user": "corey", "server_url": "server1", "bot": false}
 `,
 			wantErr: false,
 			want:    wantState{messages: 2, users: 2, bots: 0, servers: 1},
@@ -120,7 +129,7 @@ data: {"user": "corey", "server_url": "en.wikipedia.org", "bot": false}
 : This is a comment
 event: message
 id: 12345
-data: {"user": "alice", "server_url": "en.wikipedia.org", "bot": false}
+data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot": false}
 `,
 			wantErr: false,
 			want:    wantState{messages: 1, users: 1, bots: 0, servers: 1},
@@ -136,9 +145,12 @@ data: {"user": "alice", "server_url": "en.wikipedia.org", "bot": false}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := database.NewInMemoryDatabase()
-			consumer := NewWikimediaConsumer("test-url")
+			consumer, err := NewWikimediaConsumer("test-url")
+			if err != nil {
+				t.Fatalf("Error initializing consumer: %v", err)
+			}
 			reader := strings.NewReader(tt.inputData)
-			err := consumer.Consume(reader, db)
+			err = consumer.Consume(context.Background(), reader, db)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Consume() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -156,5 +168,72 @@ data: {"user": "alice", "server_url": "en.wikipedia.org", "bot": false}
 				t.Errorf("servers: got %d, want %d", gotServers, tt.want.servers)
 			}
 		})
+	}
+}
+
+type SequentialMockTransport struct {
+	responses []*http.Response
+	callCount int
+}
+
+func (m *SequentialMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if m.callCount >= len(m.responses) {
+		return nil, fmt.Errorf("unexpected call to RoundTrip")
+	}
+	resp := m.responses[m.callCount]
+	m.callCount++
+	return resp, nil
+}
+
+func TestReconnect(t *testing.T) {
+	consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
+	if err != nil {
+		t.Fatalf("Error initializing consumer: %v", err)
+	}
+	r1, w1 := io.Pipe()
+	r2, w2 := io.Pipe()
+	consumer.client.Transport = &SequentialMockTransport{
+		responses: []*http.Response{
+			{
+				StatusCode: 200,
+				Body:       r1,
+			},
+			{
+				StatusCode: 200,
+				Body:       r2,
+			},
+		},
+	}
+	consumer.reconnectionDelay = 10 * time.Millisecond
+	r, err := consumer.Connect(context.Background())
+	if err != nil {
+		t.Errorf("Got error: %v", err)
+	}
+	db := database.NewInMemoryDatabase()
+	go func() {
+		if err := consumer.Consume(context.Background(), r, db); err != nil {
+			t.Errorf("Error consuming: %v", err)
+		}
+	}()
+	w1.Write([]byte(`data: {"user":"alice","bot":false,"meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n"))
+	streamError := http2.StreamError{
+		StreamID: 1,
+		Code:     http2.ErrCodeCancel,
+	}
+	w1.CloseWithError(streamError)
+	time.Sleep(100 * time.Millisecond)
+	messages, _, _, _ := db.GetStats()
+	if messages != 1 {
+		t.Errorf("Message not stored from w1")
+	}
+	if !strings.HasSuffix(consumer.url, url.QueryEscape("2025-02-02T2:22:22Z")) {
+		t.Errorf("Timestamp not correctly generated %s", consumer.url)
+	}
+	w2.Write([]byte(`data: {"user":"bob","bot":true,"meta":{"id":"2"}}` + "\n\n"))
+	w2.Close()
+	time.Sleep(100 * time.Millisecond)
+	messages, _, _, _ = db.GetStats()
+	if messages != 2 {
+		t.Errorf("Message not stored from w2")
 	}
 }
