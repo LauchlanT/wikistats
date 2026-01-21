@@ -6,4 +6,4 @@ Create a Go application that consumes from an external API, and makes stats abou
 
 ch-2:
 
-Dockerize the application
+Dockerize the application.
