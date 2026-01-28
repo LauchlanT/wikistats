@@ -31,7 +31,17 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db := database.NewInMemoryDatabase()
+	var db database.Executer
+	if os.Getenv("DATABASE_TYPE") == "scylla" {
+		sdb, err := database.NewScyllaDatabase()
+		if err != nil {
+			log.Fatalf("Error initializing database: %v", err)
+		}
+		defer sdb.Close()
+		db = sdb
+	} else {
+		db = database.NewInMemoryDatabase()
+	}
 	router := api.NewRouter(api.NewService(db))
 	streamConsumer, err := consumer.NewWikimediaConsumer(os.Getenv("STREAM_URL"))
 	if err != nil {
