@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type ScyllaDB struct {
@@ -86,10 +87,19 @@ func (s *ScyllaDB) migrate() error {
 		"CREATE TABLE IF NOT EXISTS users (name text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS bots (name text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS stats (stat text PRIMARY KEY, value counter);",
+		"CREATE TABLE IF NOT EXISTS accounts (username text PRIMARY KEY, password text);",
 	}
 	for _, q := range queries {
 		if err := s.Session.Query(q).Exec(); err != nil {
 			return fmt.Errorf("migration failed for query [%s]: %w", q, err)
+		}
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), 14)
+	if err != nil {
+		log.Printf("Could not set password for admin account: %v", err)
+	} else {
+		if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?)`, "admin", string(hash)).Exec(); err != nil {
+			log.Printf("Could not set password for admin account: %v", err)
 		}
 	}
 	return nil
@@ -157,4 +167,14 @@ func (s *ScyllaDB) GetStats() (messages int, users int, bots int, servers int) {
 		log.Printf("Error closing ScyllaDB iterator: %v", err)
 	}
 	return
+}
+
+func (s *ScyllaDB) ValidateLogin(username string, password string) bool {
+	var hash string
+	err := s.Session.Query(`SELECT password FROM accounts WHERE username = ?`, username).Scan(&hash)
+	if err != nil {
+		return false
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
 }

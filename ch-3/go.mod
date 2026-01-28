@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gocql/gocql v1.7.0
+	golang.org/x/crypto v0.47.0
 	golang.org/x/net v0.49.0
 )
 

@@ -1,6 +1,11 @@
 package database
 
-import "sync"
+import (
+	"log"
+	"sync"
+
+	"golang.org/x/crypto/bcrypt"
+)
 
 type InMemoryDatabase struct {
 	lock     sync.Mutex
@@ -8,15 +13,24 @@ type InMemoryDatabase struct {
 	users    map[string]struct{}
 	bots     map[string]struct{}
 	servers  map[string]struct{}
+	accounts map[string]string
 }
 
 func NewInMemoryDatabase() *InMemoryDatabase {
-	return &InMemoryDatabase{
+	db := &InMemoryDatabase{
 		messages: make(map[string]struct{}),
 		users:    make(map[string]struct{}),
 		bots:     make(map[string]struct{}),
 		servers:  make(map[string]struct{}),
+		accounts: make(map[string]string),
 	}
+	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), 14)
+	if err != nil {
+		log.Printf("Could not set password for admin account: %v", err)
+	} else {
+		db.accounts["admin"] = string(hash)
+	}
+	return db
 }
 
 func (d *InMemoryDatabase) UpdateDatabase(id string, user string, server string, isBot bool) {
@@ -37,4 +51,12 @@ func (d *InMemoryDatabase) GetStats() (messages int, users int, bots int, server
 	defer d.lock.Unlock()
 
 	return len(d.messages), len(d.users), len(d.bots), len(d.servers)
+}
+
+func (d *InMemoryDatabase) ValidateLogin(username string, password string) bool {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	err := bcrypt.CompareHashAndPassword([]byte(d.accounts[username]), []byte(password))
+	return err == nil
 }
