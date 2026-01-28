@@ -98,7 +98,7 @@ func (s *ScyllaDB) migrate() error {
 	if err != nil {
 		log.Printf("Could not set password for admin account: %v", err)
 	} else {
-		if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?)`, "admin", string(hash)).Exec(); err != nil {
+		if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, "admin", string(hash)).Exec(); err != nil {
 			log.Printf("Could not set password for admin account: %v", err)
 		}
 	}
