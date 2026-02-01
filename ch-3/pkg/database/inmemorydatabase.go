@@ -2,6 +2,7 @@ package database
 
 import (
 	"log"
+	"os"
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
@@ -24,11 +25,13 @@ func NewInMemoryDatabase() *InMemoryDatabase {
 		servers:  make(map[string]struct{}),
 		accounts: make(map[string]string),
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), 14)
-	if err != nil {
-		log.Printf("Could not set password for admin account: %v", err)
-	} else {
-		db.accounts["admin"] = string(hash)
+	if os.Getenv("API_USER") != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(os.Getenv("API_PASSWORD")), 14)
+		if err != nil {
+			log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
+		} else {
+			db.accounts[os.Getenv("API_USER")] = string(hash)
+		}
 	}
 	return db
 }

@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 )
@@ -130,6 +131,45 @@ func TestGetStats(t *testing.T) {
 				db.UpdateDatabase(op.id, op.user, op.server, op.isBot)
 			}
 			assertStats(t, db, tt.want)
+		})
+	}
+}
+
+func TestValidateLogin(t *testing.T) {
+	tests := []struct {
+		name       string
+		userDB     string
+		passwordDB string
+		user       string
+		password   string
+		want       bool
+	}{
+		{
+			name:       "Successful login",
+			userDB:     "TestAdmin",
+			passwordDB: "secretpassword",
+			user:       "TestAdmin",
+			password:   "secretpassword",
+			want:       true,
+		},
+		{
+			name:       "Invalid login",
+			userDB:     "TestAdmin",
+			passwordDB: "secretpassword",
+			user:       "TestAdmin",
+			password:   "wrongpassword",
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Setenv("API_USER", tt.userDB)
+			os.Setenv("API_PASSWORD", tt.passwordDB)
+			db := NewInMemoryDatabase()
+			if got := db.ValidateLogin(tt.user, tt.password); got != tt.want {
+				t.Errorf("got %t want %t", got, tt.want)
+			}
 		})
 	}
 }

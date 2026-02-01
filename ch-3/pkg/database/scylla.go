@@ -94,12 +94,14 @@ func (s *ScyllaDB) migrate() error {
 			return fmt.Errorf("migration failed for query [%s]: %w", q, err)
 		}
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), 14)
-	if err != nil {
-		log.Printf("Could not set password for admin account: %v", err)
-	} else {
-		if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, "admin", string(hash)).Exec(); err != nil {
-			log.Printf("Could not set password for admin account: %v", err)
+	if os.Getenv("API_USER") != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(os.Getenv("API_PASSWORD")), 14)
+		if err != nil {
+			log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
+		} else {
+			if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, os.Getenv("API_USER"), string(hash)).Exec(); err != nil {
+				log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
+			}
 		}
 	}
 	return nil
