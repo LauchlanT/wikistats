@@ -11,9 +11,14 @@ import (
 )
 
 type Config struct {
+	Main     MainConfig
 	Database DatabaseConfig
 	API      APIConfig
 	Consumer ConsumerConfig
+}
+
+type MainConfig struct {
+	ShutdownTimeout time.Duration
 }
 
 type DatabaseConfig struct {
@@ -43,6 +48,9 @@ type ConsumerConfig struct {
 
 func LoadFromEnv() (*Config, error) {
 	cfg := &Config{
+		Main: MainConfig{
+			ShutdownTimeout: parseDurationOrDefault("SHUTDOWN_TIMEOUT", 10*time.Second),
+		},
 		Database: DatabaseConfig{
 			Type:           getEnvOrDefault("DATABASE_TYPE", "inmemory"),
 			Hosts:          splitEnv("SCYLLA_HOSTS", ","),

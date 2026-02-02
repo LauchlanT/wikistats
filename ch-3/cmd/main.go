@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 	"wikistats/pkg/api"
 	"wikistats/pkg/config"
 	"wikistats/pkg/consumer"
@@ -19,7 +19,13 @@ import (
 )
 
 func main() {
-	// Load environment variables from .env file or specified override
+	if err := run(); err != nil {
+		log.Printf("Application error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	envFile := flag.String("env", ".env", "override path to environment variables file")
 	flag.Parse()
 	if *envFile != "" {
@@ -29,7 +35,7 @@ func main() {
 	}
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		log.Fatalf("Configuration error: %v", err)
+		return fmt.Errorf("configuration error: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -37,20 +43,21 @@ func main() {
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
-		log.Fatalf("Database initialization failed: %v", err)
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
 	defer db.Close()
 	if err := db.MigrateDatabase(ctx); err != nil {
-		log.Fatalf("Error migrating database: %v", err)
+		return fmt.Errorf("error migrating database: %w", err)
 	}
 	if err := db.AddUser(ctx, cfg.API.Username, cfg.API.Password); err != nil {
-		log.Fatalf("Error creating user account: %v", err)
+		return fmt.Errorf("error creating user account: %w", err)
 	}
 
 	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
 	if err != nil {
-		log.Fatalf("Error initializing consumer: %v", err)
+		return fmt.Errorf("error initializing consumer: %w", err)
 	}
+
 	server := &http.Server{
 		Addr:         ":" + cfg.API.Port,
 		Handler:      api.NewRouter(api.NewService(db)),
@@ -60,44 +67,49 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
 
-	// Start the API server and the consumer process
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		log.Printf("Server starting on port %s", cfg.API.Port)
-		if err := server.ListenAndServe(); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) && !errors.Is(err, context.Canceled) {
-			log.Printf("Server failed to start: %v", err)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errChan <- fmt.Errorf("server error: %w", err)
 			cancel()
-			return
 		}
 	}()
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		log.Println("Starting consumer")
 		stream, err := streamConsumer.Connect(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("Consumer failed to start: %v", err)
+			errChan <- fmt.Errorf("consumer connection error: %w", err)
 			cancel()
 			return
 		}
 		if err = streamConsumer.Consume(ctx, stream, db); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("Consumer failed: %v", err)
+			errChan <- fmt.Errorf("consumer processing error: %w", err)
 			cancel()
-			return
 		}
 	}()
 
-	// Gracefully handle shutdown requests and wait for dependencies to terminate
 	<-ctx.Done()
 	log.Println("Shutdown signal received, stopping services...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Main.ShutdownTimeout)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
 	wg.Wait()
-	log.Println("Application terminated")
+	close(errChan)
+	for e := range errChan {
+		if e != nil {
+			return e
+		}
+	}
+
+	log.Println("Application terminated gracefully")
+	return nil
 }
