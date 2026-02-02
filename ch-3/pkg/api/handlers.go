@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"wikistats/pkg/config"
 	"wikistats/pkg/database"
 )
 
@@ -23,9 +24,10 @@ type Service struct {
 	auth *AuthService
 }
 
-func NewService(db database.Repository) *Service {
+func NewService(cfg config.APIConfig, db database.Repository) *Service {
 	auth := &AuthService{
-		tokenCache: make(map[string]time.Time),
+		tokenCache:  make(map[string]time.Time),
+		tokenExpiry: cfg.TokenExpiry,
 	}
 	return &Service{
 		db:   db,
@@ -97,5 +99,4 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
 	w.WriteHeader(http.StatusNoContent)
-	w.Write([]byte("Logged out"))
 }

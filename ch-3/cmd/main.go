@@ -60,7 +60,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:         ":" + cfg.API.Port,
-		Handler:      api.NewRouter(api.NewService(db)),
+		Handler:      api.NewRouter(api.NewService(cfg.API, db)),
 		ReadTimeout:  cfg.API.ReadTimeout,
 		WriteTimeout: cfg.API.WriteTimeout,
 		IdleTimeout:  cfg.API.IdleTimeout,

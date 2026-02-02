@@ -4,9 +4,9 @@ import "net/http"
 
 func NewRouter(s *Service) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthcheck", s.Healthcheck)
-	mux.HandleFunc("/stats", s.AuthMiddleware(s.Stats))
-	mux.HandleFunc("/login", s.Login)
-	mux.HandleFunc("/logout", s.AuthMiddleware(s.Logout))
+	mux.HandleFunc("GET /healthcheck", s.Healthcheck)
+	mux.HandleFunc("GET /stats", s.AuthMiddleware(s.Stats))
+	mux.HandleFunc("POST /login", s.Login)
+	mux.HandleFunc("GET /logout", s.AuthMiddleware(s.Logout))
 	return mux
 }

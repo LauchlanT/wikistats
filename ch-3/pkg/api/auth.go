@@ -12,8 +12,9 @@ import (
 )
 
 type AuthService struct {
-	tokenLock  sync.RWMutex
-	tokenCache map[string]time.Time
+	tokenLock   sync.RWMutex
+	tokenCache  map[string]time.Time
+	tokenExpiry time.Duration
 }
 
 func (a *AuthService) SetToken() (*string, error) {
@@ -69,7 +70,7 @@ func (s *Service) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Validate that token has not expired
-		if time.Since(*issuedAt) > 1*time.Hour {
+		if time.Since(*issuedAt) > s.auth.tokenExpiry {
 			if err := s.auth.DeleteToken(token); err != nil {
 				log.Printf("Error deleting token: %v", err)
 				http.Error(w, "Internal error", http.StatusInternalServerError)
