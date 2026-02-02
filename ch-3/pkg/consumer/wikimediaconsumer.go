@@ -95,6 +95,10 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db databas
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return ctx.Err()
 			}
+			if errors.Is(err, bufio.ErrTooLong) {
+				// Skip lines that exceed the buffer and continue reading
+				continue
+			}
 			var streamError http2.StreamError
 			if errors.As(err, &streamError) {
 				// Reconnect if the error is just the server cancelling the connection
