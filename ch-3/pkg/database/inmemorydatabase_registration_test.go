@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	registerImplementation("inmemory", func(t *testing.T) (Executor, func()) {
+	registerImplementation("inmemory", func(t *testing.T) (Repository, func()) {
 		t.Helper()
 		cfg, err := config.LoadFromEnv()
 		if err != nil {

@@ -1,26 +1,21 @@
 services:
-  # Set the AIO limit on each ScyllaDB node high enough to function
-  aio-fix:
-    image: busybox
-    container_name: aio-fix
-    privileged: true
-    command: sysctl -w fs.aio-max-nr=1048576
-    restart: "no"
-
   scylla-node1:
     image: scylladb/scylla:latest
     container_name: scylla-node1
     restart: always
-    command: --smp 1 --memory 1G --overprovisioned 1 --api-address 0.0.0.0 --developer-mode 1
+    command: >
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
       retries: 20
       start_period: 60s
-    depends_on:
-      aio-fix:
-        condition: service_completed_successfully
     ports:
       - "9042:9042" 
     volumes:
@@ -32,16 +27,21 @@ services:
     image: scylladb/scylla:latest
     container_name: scylla-node2
     restart: always
-    command: --seeds=scylla-node1 --smp 1 --memory 1G --overprovisioned 1 --api-address 0.0.0.0 --developer-mode 1
+    command: >
+      --seeds=scylla-node1
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
       retries: 20
       start_period: 60s
     depends_on:
-      aio-fix:
-        condition: service_completed_successfully
       scylla-node1:
         condition: service_healthy
     volumes:
@@ -53,16 +53,21 @@ services:
     image: scylladb/scylla:latest
     container_name: scylla-node3
     restart: always
-    command: --seeds=scylla-node1 --smp 1 --memory 1G --overprovisioned 1 --api-address 0.0.0.0 --developer-mode 1
+    command: >
+      --seeds=scylla-node1
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
       retries: 20
       start_period: 60s
     depends_on:
-      aio-fix:
-        condition: service_completed_successfully
       scylla-node2:
         condition: service_healthy
     volumes:
