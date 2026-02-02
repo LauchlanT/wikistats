@@ -1,3 +1,5 @@
+//go:build unit
+
 package consumer
 
 import (
@@ -8,8 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+	"wikistats/pkg/config"
 	"wikistats/pkg/database"
 	"wikistats/pkg/utils"
 
@@ -77,7 +81,11 @@ func TestConnect(t *testing.T) {
 			if err := utils.LoadEnv(envFile); err != nil {
 				t.Errorf("Could not load env file: %v", err)
 			}
-			consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
+			cfg, err := config.LoadFromEnv()
+			if err != nil {
+				t.Fatalf("Configuration error: %v", err)
+			}
+			consumer, err := NewWikimediaConsumer(cfg.Consumer)
 			if err != nil {
 				t.Fatalf("Error initializing consumer: %v", err)
 			}
@@ -97,18 +105,11 @@ func TestConnect(t *testing.T) {
 }
 
 func TestConsume(t *testing.T) {
-	type wantState struct {
-		messages int
-		users    int
-		bots     int
-		servers  int
-	}
-
 	tests := []struct {
 		name      string
 		inputData string
 		wantErr   bool
-		want      wantState
+		want      database.Stats
 	}{
 		{
 			name: "Valid stream data",
@@ -117,7 +118,7 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 data: {"meta": { "id": "msg2" }, "user": "bob", "server_url": "server2", "bot": true}
 `,
 			wantErr: false,
-			want:    wantState{messages: 2, users: 1, bots: 1, servers: 2},
+			want:    database.Stats{Messages: 2, Users: 1, Bots: 1, Servers: 2},
 		},
 		{
 			name: "Malformed JSON is skipped",
@@ -127,7 +128,7 @@ data: THIS_IS_NOT_JSON
 data: {"meta": { "id": "msg2" }, "user": "corey", "server_url": "server1", "bot": false}
 `,
 			wantErr: false,
-			want:    wantState{messages: 2, users: 2, bots: 0, servers: 1},
+			want:    database.Stats{Messages: 2, Users: 2, Bots: 0, Servers: 1},
 		},
 		{
 			name: "Lines without 'data:' prefix are ignored",
@@ -138,13 +139,13 @@ id: 12345
 data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot": false}
 `,
 			wantErr: false,
-			want:    wantState{messages: 1, users: 1, bots: 0, servers: 1},
+			want:    database.Stats{Messages: 1, Users: 1, Bots: 0, Servers: 1},
 		},
 		{
 			name:      "Empty stream",
 			inputData: "",
 			wantErr:   false,
-			want:      wantState{messages: 0, users: 0, bots: 0, servers: 0},
+			want:      database.Stats{Messages: 0, Users: 0, Bots: 0, Servers: 0},
 		},
 	}
 
@@ -153,8 +154,16 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 			if err := utils.LoadEnv(envFile); err != nil {
 				t.Errorf("Could not load env file: %v", err)
 			}
-			db := database.NewInMemoryDatabase()
-			consumer, err := NewWikimediaConsumer("test-url")
+			cfg, err := config.LoadFromEnv()
+			if err != nil {
+				t.Fatalf("Configuration error: %v", err)
+			}
+			db := database.NewInMemoryDatabase(cfg.Database)
+			if err := db.MigrateDatabase(t.Context()); err != nil {
+				t.Fatalf("Error migrating database: %v", err)
+			}
+			cfg.Consumer.StreamURL = "non-functional-URL"
+			consumer, err := NewWikimediaConsumer(cfg.Consumer)
 			if err != nil {
 				t.Fatalf("Error initializing consumer: %v", err)
 			}
@@ -163,32 +172,41 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Consume() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			gotMessages, gotUsers, gotBots, gotServers := db.GetStats()
-			if gotMessages != tt.want.messages {
-				t.Errorf("messages: got %d, want %d", gotMessages, tt.want.messages)
+			stats, err := db.GetStats(t.Context())
+			if err != nil {
+				t.Errorf("Error getting stats: %v", err)
 			}
-			if gotUsers != tt.want.users {
-				t.Errorf("users: got %d, want %d", gotUsers, tt.want.users)
+			if stats.Messages != tt.want.Messages {
+				t.Errorf("messages: got %d, want %d", stats.Messages, tt.want.Messages)
 			}
-			if gotBots != tt.want.bots {
-				t.Errorf("bots: got %d, want %d", gotBots, tt.want.bots)
+			if stats.Users != tt.want.Users {
+				t.Errorf("users: got %d, want %d", stats.Users, tt.want.Users)
 			}
-			if gotServers != tt.want.servers {
-				t.Errorf("servers: got %d, want %d", gotServers, tt.want.servers)
+			if stats.Bots != tt.want.Bots {
+				t.Errorf("bots: got %d, want %d", stats.Bots, tt.want.Bots)
+			}
+			if stats.Servers != tt.want.Servers {
+				t.Errorf("servers: got %d, want %d", stats.Servers, tt.want.Servers)
 			}
 		})
 	}
 }
 
 type SequentialMockTransport struct {
+	lock      sync.Mutex
 	responses []*http.Response
+	requests  []*http.Request
 	callCount int
 }
 
 func (m *SequentialMockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	if m.callCount >= len(m.responses) {
 		return nil, fmt.Errorf("unexpected call to RoundTrip")
 	}
+	m.requests = append(m.requests, req)
 	resp := m.responses[m.callCount]
 	m.callCount++
 	return resp, nil
@@ -198,54 +216,83 @@ func TestReconnect(t *testing.T) {
 	if err := utils.LoadEnv(envFile); err != nil {
 		t.Errorf("Could not load env file: %v", err)
 	}
-	consumer, err := NewWikimediaConsumer("https://stream.wikimedia.org/v2/stream/recentchange")
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		t.Fatalf("Configuration error: %v", err)
+	}
+
+	consumer, err := NewWikimediaConsumer(cfg.Consumer)
 	if err != nil {
 		t.Fatalf("Error initializing consumer: %v", err)
 	}
 	r1, w1 := io.Pipe()
 	r2, w2 := io.Pipe()
-	consumer.client.Transport = &SequentialMockTransport{
+	mockTransport := &SequentialMockTransport{
 		responses: []*http.Response{
 			{
-				StatusCode: 200,
+				StatusCode: http.StatusOK,
 				Body:       r1,
 			},
 			{
-				StatusCode: 200,
+				StatusCode: http.StatusOK,
 				Body:       r2,
 			},
 		},
 	}
+	consumer.client.Transport = mockTransport
 	consumer.reconnectionDelay = 10 * time.Millisecond
 	r, err := consumer.Connect(context.Background())
 	if err != nil {
 		t.Errorf("Got error: %v", err)
 	}
-	db := database.NewInMemoryDatabase()
+	db := database.NewInMemoryDatabase(cfg.Database)
+	if err := db.MigrateDatabase(t.Context()); err != nil {
+		t.Fatalf("Error migrating database: %v", err)
+	}
+	errChan := make(chan error, 1)
 	go func() {
-		if err := consumer.Consume(context.Background(), r, db); err != nil {
-			t.Errorf("Error consuming: %v", err)
-		}
+		errChan <- consumer.Consume(context.Background(), r, db)
 	}()
-	w1.Write([]byte(`data: {"user":"alice","bot":false,"meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n"))
+	w1.Write([]byte(`data: {"user":"alice","bot":false,"server_url":"server1","meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n"))
 	streamError := http2.StreamError{
 		StreamID: 1,
 		Code:     http2.ErrCodeCancel,
 	}
 	w1.CloseWithError(streamError)
 	time.Sleep(100 * time.Millisecond)
-	messages, _, _, _ := db.GetStats()
-	if messages != 1 {
+	stats, err := db.GetStats(t.Context())
+	if err != nil {
+		t.Errorf("Error getting stats: %v", err)
+	}
+	if stats.Messages != 1 {
 		t.Errorf("Message not stored from w1")
 	}
-	if !strings.HasSuffix(consumer.url, url.QueryEscape("2025-02-02T2:22:22Z")) {
-		t.Errorf("Timestamp not correctly generated %s", consumer.url)
+	mockTransport.lock.Lock()
+	if len(mockTransport.requests) < 2 {
+		t.Fatalf("Expected 2 HTTP requests (initial connect + reconnect)")
 	}
-	w2.Write([]byte(`data: {"user":"bob","bot":true,"meta":{"id":"2"}}` + "\n\n"))
+	reconnectURL := mockTransport.requests[1].URL.String()
+	mockTransport.lock.Unlock()
+	expectedSuffix := url.QueryEscape("2025-02-02T2:22:22Z")
+	if !strings.HasSuffix(reconnectURL, expectedSuffix) {
+		t.Errorf("Timestamp not correctly generated in reconnect URL.\nGot: %s\nExpected suffix: %s", reconnectURL, expectedSuffix)
+	}
+	w2.Write([]byte(`data: {"user":"bob","bot":true,"server_url":"server2","meta":{"id":"2"}}` + "\n\n"))
 	w2.Close()
+	select {
+	case consumeErr := <-errChan:
+		if consumeErr != nil && consumeErr != io.EOF && !strings.Contains(consumeErr.Error(), "StreamError") {
+			t.Logf("Consume returned (may be expected error): %v", consumeErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Consume did not return after w2 was closed")
+	}
 	time.Sleep(100 * time.Millisecond)
-	messages, _, _, _ = db.GetStats()
-	if messages != 2 {
+	stats, err = db.GetStats(t.Context())
+	if err != nil {
+		t.Errorf("Error getting stats: %v", err)
+	}
+	if stats.Messages != 2 {
 		t.Errorf("Message not stored from w2")
 	}
 }

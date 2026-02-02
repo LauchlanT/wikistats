@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"syscall"
 	"time"
 	"wikistats/pkg/api"
+	"wikistats/pkg/config"
 	"wikistats/pkg/consumer"
 	"wikistats/pkg/database"
 	"wikistats/pkg/utils"
@@ -27,32 +27,36 @@ func main() {
 			log.Printf("Could not load env file: %v", err)
 		}
 	}
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		log.Fatalf("Configuration error: %v", err)
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	var db database.Executer
-	if os.Getenv("DATABASE_TYPE") == "scylla" {
-		sdb, err := database.NewScyllaDatabase()
-		if err != nil {
-			log.Fatalf("Error initializing database: %v", err)
-		}
-		defer sdb.Close()
-		db = sdb
-	} else {
-		db = database.NewInMemoryDatabase()
+	db, err := database.New(cfg.Database)
+	if err != nil {
+		log.Fatalf("Database initialization failed: %v", err)
 	}
-	router := api.NewRouter(api.NewService(db))
-	streamConsumer, err := consumer.NewWikimediaConsumer(os.Getenv("STREAM_URL"))
+	defer db.Close()
+	if err := db.MigrateDatabase(ctx); err != nil {
+		log.Fatalf("Error migrating database: %v", err)
+	}
+	if err := db.AddUser(ctx, cfg.API.Username, cfg.API.Password); err != nil {
+		log.Fatalf("Error creating user account: %v", err)
+	}
+
+	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
 	if err != nil {
 		log.Fatalf("Error initializing consumer: %v", err)
 	}
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%s", os.Getenv("API_PORT")),
-		Handler:      router,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:         ":" + cfg.API.Port,
+		Handler:      api.NewRouter(api.NewService(db)),
+		ReadTimeout:  cfg.API.ReadTimeout,
+		WriteTimeout: cfg.API.WriteTimeout,
+		IdleTimeout:  cfg.API.IdleTimeout,
 	}
 
 	var wg sync.WaitGroup
@@ -61,7 +65,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Println("Server starting on port", os.Getenv("API_PORT"))
+		log.Printf("Server starting on port %s", cfg.API.Port)
 		if err := server.ListenAndServe(); err != nil &&
 			!errors.Is(err, http.ErrServerClosed) && !errors.Is(err, context.Canceled) {
 			log.Printf("Server failed to start: %v", err)
@@ -73,7 +77,6 @@ func main() {
 	go func() {
 		defer wg.Done()
 		log.Println("Starting consumer")
-		start := time.Now()
 		stream, err := streamConsumer.Connect(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("Consumer failed to start: %v", err)
@@ -81,8 +84,6 @@ func main() {
 			return
 		}
 		if err = streamConsumer.Consume(ctx, stream, db); err != nil && !errors.Is(err, context.Canceled) {
-			log.Println(db.GetStats())
-			log.Println(time.Since(start))
 			log.Printf("Consumer failed: %v", err)
 			cancel()
 			return

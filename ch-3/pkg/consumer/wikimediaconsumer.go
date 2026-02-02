@@ -11,10 +11,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"strconv"
 	"strings"
 	"time"
+	"wikistats/pkg/config"
 	"wikistats/pkg/database"
 	"wikistats/pkg/models"
 
@@ -25,26 +24,23 @@ type WikimediaConsumer struct {
 	url               string
 	client            *http.Client
 	reconnectionDelay time.Duration
+	userAgent         string
 }
 
-func NewWikimediaConsumer(streamURL string) (*WikimediaConsumer, error) {
+func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
 	// Configure transport to explicitly be x/net/http2 so errors can be inspected
 	transport := &http.Transport{}
 	if err := http2.ConfigureTransport(transport); err != nil {
 		return nil, err
 	}
-	reconnectDelay, err := strconv.Atoi(os.Getenv("RECONNECTION_DELAY"))
-	if err != nil {
-		log.Printf("Error converting %s to int, defaulting to 120", os.Getenv("RECONNECTION_DELAY"))
-		reconnectDelay = 120
-	}
 
 	return &WikimediaConsumer{
-		url: streamURL,
+		url: cfg.StreamURL,
 		client: &http.Client{
 			Transport: transport,
 		},
-		reconnectionDelay: time.Duration(reconnectDelay) * time.Second,
+		reconnectionDelay: cfg.ReconnectionDelay,
+		userAgent:         cfg.UserAgent,
 	}, nil
 }
 
@@ -54,7 +50,7 @@ func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
 		return nil, fmt.Errorf("creating http request: %w", err)
 	}
 	// Wikimedia requires an identifying user agent
-	req.Header.Set("User-Agent", "REDspace workshop (lauchlan.toal@redspace.com)")
+	req.Header.Set("User-Agent", c.userAgent)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", c.url, err)
@@ -66,7 +62,7 @@ func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
 	return resp.Body, nil
 }
 
-func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db database.Executer) error {
+func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db database.Executor) error {
 	// Infinite loop to handle reconnections
 	for {
 		// Scan every line of stream to get change data
@@ -89,7 +85,10 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db databas
 				continue
 			}
 			lastTimestamp = msg.Meta.DT
-			db.UpdateDatabase(msg.Meta.ID, msg.User, msg.ServerURL, msg.Bot)
+			err := db.UpdateDatabase(ctx, database.StatsUpdate{Id: msg.Meta.ID, User: msg.User, Server: msg.ServerURL, IsBot: msg.Bot})
+			if err != nil {
+				return fmt.Errorf("requesting database update: %w", err)
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			// Terminate consumer if service is shutting down

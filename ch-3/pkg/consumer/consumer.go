@@ -1,11 +1,12 @@
 package consumer
 
 import (
+	"context"
 	"io"
 	"wikistats/pkg/database"
 )
 
 type Consumer interface {
-	Connect() (io.Reader, error)
-	Consume(io.Reader, database.Executer) error
+	Connect(context.Context) (io.Reader, error)
+	Consume(context.Context, io.Reader, database.Executor) error
 }

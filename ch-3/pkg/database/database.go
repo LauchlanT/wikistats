@@ -1,7 +1,41 @@
 package database
 
-type Executer interface {
-	UpdateDatabase(messageID string, username string, servername string, isBot bool)
-	GetStats() (messages int, users int, bots int, servers int)
-	ValidateLogin(username string, password string) bool
+import (
+	"context"
+	"fmt"
+	"wikistats/pkg/config"
+)
+
+type StatsUpdate struct {
+	Id     string
+	User   string
+	Server string
+	IsBot  bool
+}
+
+type Stats struct {
+	Messages int
+	Users    int
+	Bots     int
+	Servers  int
+}
+
+type Executor interface {
+	UpdateDatabase(ctx context.Context, s StatsUpdate) error
+	MigrateDatabase(ctx context.Context) error
+	AddUser(ctx context.Context, username string, password string) error
+	GetStats(ctx context.Context) (*Stats, error)
+	ValidateLogin(ctx context.Context, username string, password string) error
+	Close() error
+}
+
+func New(cfg config.DatabaseConfig) (Executor, error) {
+	switch cfg.Type {
+	case "scylla":
+		return NewScyllaDatabase(cfg)
+	case "inmemory":
+		return NewInMemoryDatabase(cfg), nil
+	default:
+		return nil, fmt.Errorf("unknown database type: %s", cfg.Type)
+	}
 }

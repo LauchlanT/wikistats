@@ -1,14 +1,14 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"wikistats/pkg/database"
 )
@@ -19,51 +19,83 @@ type Credentials struct {
 }
 
 type Service struct {
-	db         database.Executer
-	tokenCache sync.Map
+	db   database.Executor
+	auth *AuthService
 }
 
-func NewService(db database.Executer) *Service {
+func NewService(db database.Executor) *Service {
+	auth := &AuthService{
+		tokenCache: make(map[string]time.Time),
+	}
 	return &Service{
-		db: db,
+		db:   db,
+		auth: auth,
 	}
 }
 
 func (s *Service) Healthcheck(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Service active"))
+	if _, err := w.Write([]byte("Service active")); err != nil {
+		log.Printf("Error responding to healthcheck request: %v", err)
+	}
 }
 
 func (s *Service) Stats(w http.ResponseWriter, r *http.Request) {
-	messages, users, bots, servers := s.db.GetStats()
-	stats := fmt.Sprintf("%d messages\n%d users\n%d bots\n%d servers", messages, users, bots, servers)
-	w.Write([]byte(stats))
+	stats, err := s.db.GetStats(r.Context())
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Database timeout", http.StatusGatewayTimeout)
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			// Client disconnected, no need to respond
+			return
+		}
+		log.Printf("Error getting stats: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	output := fmt.Sprintf("%d messages\n%d users\n%d bots\n%d servers", stats.Messages, stats.Users, stats.Bots, stats.Servers)
+	if _, err := w.Write([]byte(output)); err != nil {
+		log.Printf("Error responding to stats request: %v", err)
+	}
 }
 
 func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	var creds Credentials
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+	body := io.LimitReader(r.Body, 2048)
+	if err := json.NewDecoder(body).Decode(&creds); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if isValid := s.db.ValidateLogin(creds.Username, creds.Password); !isValid {
+	if err := s.db.ValidateLogin(r.Context(), creds.Username, creds.Password); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Database timeout", http.StatusGatewayTimeout)
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			// Client disconnected, no need to respond
+			return
+		}
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	// Generate new bearer token
-	randBytes := make([]byte, 32)
-	_, err := rand.Read(randBytes)
+	token, err := s.auth.SetToken()
 	if err != nil {
-		log.Printf("Error generating random bytes: %v", err)
+		log.Printf("Error generating bearer token: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
-	token := base64.URLEncoding.EncodeToString(randBytes)
-	s.tokenCache.Store(token, time.Now())
-	w.Write([]byte(token))
+	if _, err := w.Write([]byte(*token)); err != nil {
+		log.Printf("Error responding to login request: %v", err)
+	}
 }
 
 func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	token := strings.TrimPrefix(authHeader, "Bearer ")
-	s.tokenCache.Delete(token)
+	if err := s.auth.DeleteToken(token); err != nil {
+		log.Printf("Error deleting token from cache: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+	}
 	w.WriteHeader(http.StatusNoContent)
+	w.Write([]byte("Logged out"))
 }

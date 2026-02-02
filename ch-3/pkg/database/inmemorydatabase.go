@@ -1,65 +1,134 @@
 package database
 
 import (
-	"log"
-	"os"
+	"context"
+	"fmt"
 	"sync"
+	"wikistats/pkg/config"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 type InMemoryDatabase struct {
-	lock     sync.Mutex
-	messages map[string]struct{}
-	users    map[string]struct{}
-	bots     map[string]struct{}
-	servers  map[string]struct{}
-	accounts map[string]string
+	lock       sync.Mutex
+	messages   map[string]struct{}
+	users      map[string]struct{}
+	bots       map[string]struct{}
+	servers    map[string]struct{}
+	accounts   map[string]string
+	bcryptCost int
 }
 
-func NewInMemoryDatabase() *InMemoryDatabase {
-	db := &InMemoryDatabase{
-		messages: make(map[string]struct{}),
-		users:    make(map[string]struct{}),
-		bots:     make(map[string]struct{}),
-		servers:  make(map[string]struct{}),
-		accounts: make(map[string]string),
-	}
-	if os.Getenv("API_USER") != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(os.Getenv("API_PASSWORD")), 14)
-		if err != nil {
-			log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
-		} else {
-			db.accounts[os.Getenv("API_USER")] = string(hash)
-		}
-	}
-	return db
+func NewInMemoryDatabase(cfg config.DatabaseConfig) *InMemoryDatabase {
+	return &InMemoryDatabase{bcryptCost: cfg.BcryptCost}
 }
 
-func (d *InMemoryDatabase) UpdateDatabase(id string, user string, server string, isBot bool) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+func (i *InMemoryDatabase) MigrateDatabase(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("migrating database: %w", ctx.Err())
+	default:
+	}
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("migrating database: %w", err)
+	}
 
-	d.messages[id] = struct{}{}
-	if isBot {
-		d.bots[user] = struct{}{}
+	i.messages = make(map[string]struct{})
+	i.users = make(map[string]struct{})
+	i.bots = make(map[string]struct{})
+	i.servers = make(map[string]struct{})
+	i.accounts = make(map[string]string)
+	return nil
+}
+
+func (i *InMemoryDatabase) Close() error {
+	return nil
+}
+
+func (i *InMemoryDatabase) AddUser(ctx context.Context, username string, password string) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("adding user: %w", ctx.Err())
+	default:
+	}
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("adding user: %w", err)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), i.bcryptCost)
+	if err != nil {
+		return fmt.Errorf("hashing password: %w", err)
+	}
+	i.accounts[username] = string(hash)
+	return nil
+}
+
+func (i *InMemoryDatabase) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("updating database: %w", ctx.Err())
+	default:
+	}
+	if u.Id == "" || u.User == "" || u.Server == "" {
+		return fmt.Errorf("inserting empty values %+v", u)
+	}
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("updating database: %w", err)
+	}
+
+	i.messages[u.Id] = struct{}{}
+	if u.IsBot {
+		i.bots[u.User] = struct{}{}
 	} else {
-		d.users[user] = struct{}{}
+		i.users[u.User] = struct{}{}
 	}
-	d.servers[server] = struct{}{}
+	i.servers[u.Server] = struct{}{}
+	return nil
 }
 
-func (d *InMemoryDatabase) GetStats() (messages int, users int, bots int, servers int) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+func (i *InMemoryDatabase) GetStats(ctx context.Context) (*Stats, error) {
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("getting stats: %w", ctx.Err())
+	default:
+	}
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("getting stats: %w", err)
+	}
 
-	return len(d.messages), len(d.users), len(d.bots), len(d.servers)
+	return &Stats{
+		Messages: len(i.messages),
+		Users:    len(i.users),
+		Bots:     len(i.bots),
+		Servers:  len(i.servers),
+	}, nil
 }
 
-func (d *InMemoryDatabase) ValidateLogin(username string, password string) bool {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+func (i *InMemoryDatabase) ValidateLogin(ctx context.Context, username string, password string) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("validating login: %w", ctx.Err())
+	default:
+	}
+	i.lock.Lock()
+	if err := ctx.Err(); err != nil {
+		i.lock.Unlock()
+		return fmt.Errorf("validating login: %w", err)
+	}
+	storedHash, ok := i.accounts[username]
+	i.lock.Unlock()
 
-	err := bcrypt.CompareHashAndPassword([]byte(d.accounts[username]), []byte(password))
-	return err == nil
+	if !ok {
+		return fmt.Errorf("user not found")
+	}
+	err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
+	return err
 }

@@ -1,86 +1,88 @@
 package database
 
 import (
+	"context"
 	"fmt"
-	"log"
-	"os"
-	"strconv"
-	"strings"
 	"time"
+	"wikistats/pkg/config"
 
 	"github.com/gocql/gocql"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type ScyllaDB struct {
-	Session *gocql.Session
+	session    *gocql.Session
+	bcryptCost int
 }
 
-func NewScyllaDatabase() (*ScyllaDB, error) {
-	// Configure connection settings
-	if os.Getenv("SCYLLA_HOSTS") == "" || os.Getenv("SCYLLA_KEYSPACE") == "" {
-		return nil, fmt.Errorf("missing value for hosts or keyspace")
-	}
-	cluster := gocql.NewCluster(strings.Split(os.Getenv("SCYLLA_HOSTS"), ",")...)
-	cluster.Consistency = gocql.Quorum
-	clusterTimeout, err := strconv.Atoi(os.Getenv("SCYLLA_CLUSTER_TIMEOUT"))
-	if err != nil {
-		log.Printf("Error converting %s to int, defaulting to 5", os.Getenv("SCYLLA_CLUSTER_TIMEOUT"))
-		clusterTimeout = 5
-	}
-	cluster.Timeout = time.Duration(clusterTimeout) * time.Second
-
-	var session *gocql.Session
-
+func NewScyllaDatabase(cfg config.DatabaseConfig) (*ScyllaDB, error) {
 	// Connect to Scylla
-	maxRetries := 10
-	for i := 0; i < maxRetries; i++ {
-		session, err = cluster.CreateSession()
-		if err == nil {
-			log.Printf("Successfully connected to ScyllaDB at %s", os.Getenv("SCYLLA_HOSTS"))
-			break
-		}
-		log.Printf("Waiting for ScyllaDB to be ready... (attempt %d/%d): %v", i+1, maxRetries, err)
-		time.Sleep(5 * time.Second)
-	}
+	cluster := gocql.NewCluster(cfg.Hosts...)
+	cluster.Consistency = cfg.Consistency
+	cluster.Timeout = cfg.ConnectTimeout
+	initSession, err := connectWithRetry(cluster, cfg.ConnectTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to ScyllaDB")
+		return nil, fmt.Errorf("connecting to ScyllaDB: %w", err)
 	}
+	defer initSession.Close()
 
 	// Ensure keyspace is initialized
-	createKeyspaceStmt := fmt.Sprintf(
-		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3} AND tablets = {'enabled': false};",
-		os.Getenv("SCYLLA_KEYSPACE"),
-	)
-	if err := session.Query(createKeyspaceStmt).Exec(); err != nil {
+	if err := createKeyspace(initSession, cfg.Keyspace); err != nil {
 		return nil, fmt.Errorf("creating keyspace: %w", err)
 	}
 
 	// Connect to the application's keyspace
-	session.Close()
-	cluster.Keyspace = os.Getenv("SCYLLA_KEYSPACE")
-	session, err = cluster.CreateSession()
+	cluster.Keyspace = cfg.Keyspace
+	session, err := cluster.CreateSession()
 	if err != nil {
 		return nil, fmt.Errorf("connecting to application keyspace: %w", err)
 	}
 
-	db := &ScyllaDB{Session: session}
-
-	// Ensure DB is initialized
-	if err := db.migrate(); err != nil {
-		return nil, fmt.Errorf("migrating Scylla DB: %w", err)
-	}
-
-	return db, nil
+	return &ScyllaDB{
+		session:    session,
+		bcryptCost: cfg.BcryptCost,
+	}, nil
 }
 
-func (s *ScyllaDB) Close() {
-	if s.Session != nil {
-		s.Session.Close()
+func connectWithRetry(cluster *gocql.ClusterConfig, timeout time.Duration) (*gocql.Session, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("timeout waiting for connection: %w", ctx.Err())
+		case <-ticker.C:
+			session, err := cluster.CreateSession()
+			if err == nil {
+				return session, nil
+			}
+		}
 	}
 }
 
-func (s *ScyllaDB) migrate() error {
+func createKeyspace(session *gocql.Session, keyspace string) error {
+	createKeyspaceStmt := fmt.Sprintf(
+		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3} AND tablets = {'enabled': false};",
+		keyspace,
+	)
+	return session.Query(createKeyspaceStmt).Exec()
+}
+
+func (s *ScyllaDB) Close() error {
+	if s.session != nil {
+		s.session.Close()
+	}
+	return nil
+}
+
+func (s *ScyllaDB) MigrateDatabase(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("migrating DB: %w", err)
+	}
 	queries := []string{
 		"CREATE TABLE IF NOT EXISTS messages (id text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS servers (name text PRIMARY KEY);",
@@ -90,93 +92,122 @@ func (s *ScyllaDB) migrate() error {
 		"CREATE TABLE IF NOT EXISTS accounts (username text PRIMARY KEY, password text);",
 	}
 	for _, q := range queries {
-		if err := s.Session.Query(q).Exec(); err != nil {
+		if err := s.session.Query(q).Exec(); err != nil {
 			return fmt.Errorf("migration failed for query [%s]: %w", q, err)
-		}
-	}
-	if os.Getenv("API_USER") != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(os.Getenv("API_PASSWORD")), 14)
-		if err != nil {
-			log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
-		} else {
-			if err = s.Session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, os.Getenv("API_USER"), string(hash)).Exec(); err != nil {
-				log.Printf("Could not set password for %s account: %v", os.Getenv("API_USER"), err)
-			}
 		}
 	}
 	return nil
 }
 
-func (s *ScyllaDB) UpdateDatabase(id string, user string, server string, isBot bool) {
-	var existingValue string
-	messageStored, err := s.Session.Query(`INSERT INTO messages (id) VALUES (?) IF NOT EXISTS`, id).ScanCAS(&existingValue)
+func (s *ScyllaDB) AddUser(ctx context.Context, username string, password string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("adding user: %w", err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
-		log.Printf("Error inserting message %s: %v", id, err)
+		return fmt.Errorf("hashing password: %w", err)
+	} else {
+		err = s.session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, username, string(hash)).WithContext(ctx).Exec()
+		if err != nil {
+			return fmt.Errorf("setting password for %s account: %w", username, err)
+		}
+	}
+	return nil
+}
+
+func (s *ScyllaDB) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("updating database: %w", err)
+	}
+	if u.Id == "" || u.User == "" || u.Server == "" {
+		return fmt.Errorf("inserting empty values %+v", u)
+	}
+	var existingValue string
+	messageStored, err := s.session.Query(`INSERT INTO messages (id) VALUES (?) IF NOT EXISTS`, u.Id).WithContext(ctx).ScanCAS(&existingValue)
+	if err != nil {
+		return fmt.Errorf("inserting message %s: %w", u.Id, err)
 	}
 	if messageStored {
-		s.incrementStat("messagecount")
+		if err := s.incrementStat(ctx, "messagecount"); err != nil {
+			return fmt.Errorf("incrementing message count: %w", err)
+		}
 	}
-	if isBot {
-		botStored, err := s.Session.Query(`INSERT INTO bots (name) VALUES (?) IF NOT EXISTS`, user).ScanCAS(&existingValue)
+	if u.IsBot {
+		botStored, err := s.session.Query(`INSERT INTO bots (name) VALUES (?) IF NOT EXISTS`, u.User).WithContext(ctx).ScanCAS(&existingValue)
 		if err != nil {
-			log.Printf("Error inserting bot %s: %v", user, err)
+			return fmt.Errorf("inserting bot %s: %w", u.User, err)
 		}
 		if botStored {
-			s.incrementStat("botcount")
+			if err := s.incrementStat(ctx, "botcount"); err != nil {
+				return fmt.Errorf("incrementing bot count: %w", err)
+			}
 		}
 	} else {
-		userStored, err := s.Session.Query(`INSERT INTO users (name) VALUES (?) IF NOT EXISTS`, user).ScanCAS(&existingValue)
+		userStored, err := s.session.Query(`INSERT INTO users (name) VALUES (?) IF NOT EXISTS`, u.User).WithContext(ctx).ScanCAS(&existingValue)
 		if err != nil {
-			log.Printf("Error inserting user %s: %v", user, err)
+			return fmt.Errorf("inserting user %s: %w", u.User, err)
 		}
 		if userStored {
-			s.incrementStat("usercount")
+			if err := s.incrementStat(ctx, "usercount"); err != nil {
+				return fmt.Errorf("incrementing user count: %w", err)
+			}
 		}
 	}
-	serverStored, err := s.Session.Query(`INSERT INTO servers (name) VALUES (?) IF NOT EXISTS`, server).ScanCAS(&existingValue)
+	serverStored, err := s.session.Query(`INSERT INTO servers (name) VALUES (?) IF NOT EXISTS`, u.Server).WithContext(ctx).ScanCAS(&existingValue)
 	if err != nil {
-		log.Printf("Error inserting server %s: %v", server, err)
+		return fmt.Errorf("inserting server %s: %w", u.Server, err)
 	}
 	if serverStored {
-		s.incrementStat("servercount")
+		if err := s.incrementStat(ctx, "servercount"); err != nil {
+			return fmt.Errorf("incrementing server count: %w", err)
+		}
 	}
+	return nil
 }
 
-func (s *ScyllaDB) incrementStat(statName string) {
-	err := s.Session.Query(`UPDATE stats SET value = value + 1 WHERE stat = ?`, statName).Exec()
+func (s *ScyllaDB) incrementStat(ctx context.Context, statName string) error {
+	err := s.session.Query(`UPDATE stats SET value = value + 1 WHERE stat = ?`, statName).WithContext(ctx).Exec()
 	if err != nil {
-		log.Printf("Failed to increment stat %s: %v", statName, err)
+		return fmt.Errorf("incrementing stat %s: %w", statName, err)
 	}
+	return nil
 }
 
-func (s *ScyllaDB) GetStats() (messages int, users int, bots int, servers int) {
+func (s *ScyllaDB) GetStats(ctx context.Context) (*Stats, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("getting stats: %w", err)
+	}
 	var statName string
 	var statValue int64
-	iter := s.Session.Query(`SELECT stat, value FROM stats`).Iter()
+	var stat Stats
+	iter := s.session.Query(`SELECT stat, value FROM stats`).WithContext(ctx).Iter()
 	for iter.Scan(&statName, &statValue) {
 		switch statName {
 		case "messagecount":
-			messages = int(statValue)
+			stat.Messages = int(statValue)
 		case "usercount":
-			users = int(statValue)
+			stat.Users = int(statValue)
 		case "botcount":
-			bots = int(statValue)
+			stat.Bots = int(statValue)
 		case "servercount":
-			servers = int(statValue)
+			stat.Servers = int(statValue)
 		}
 	}
 	if err := iter.Close(); err != nil {
-		log.Printf("Error closing ScyllaDB iterator: %v", err)
+		return nil, fmt.Errorf("closing ScyllaDB iterator: %w", err)
 	}
-	return
+	return &stat, nil
 }
 
-func (s *ScyllaDB) ValidateLogin(username string, password string) bool {
+func (s *ScyllaDB) ValidateLogin(ctx context.Context, username string, password string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("validating login: %w", err)
+	}
 	var hash string
-	err := s.Session.Query(`SELECT password FROM accounts WHERE username = ?`, username).Scan(&hash)
+	err := s.session.Query(`SELECT password FROM accounts WHERE username = ?`, username).WithContext(ctx).Scan(&hash)
 	if err != nil {
-		return false
+		return err
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+	return err
 }
