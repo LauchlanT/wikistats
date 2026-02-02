@@ -62,7 +62,7 @@ func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
 	return resp.Body, nil
 }
 
-func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db database.Executor) error {
+func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db database.Repository) error {
 	// Infinite loop to handle reconnections
 	for {
 		// Scan every line of stream to get change data

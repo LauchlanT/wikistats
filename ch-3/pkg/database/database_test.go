@@ -12,12 +12,12 @@ const envFile string = "../../.test_env"
 
 type dbImplementation struct {
 	name    string
-	factory func(t *testing.T) (Executor, func())
+	factory func(t *testing.T) (Repository, func())
 }
 
 var dbImplementations []dbImplementation
 
-func registerImplementation(name string, factory func(t *testing.T) (Executor, func())) {
+func registerImplementation(name string, factory func(t *testing.T) (Repository, func())) {
 	if err := utils.LoadEnv(envFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load env file: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func assertStats(t *testing.T, db Executor, want Stats) {
+func assertStats(t *testing.T, db Repository, want Stats) {
 	t.Helper()
 	stats, err := db.GetStats(t.Context())
 	if err != nil {

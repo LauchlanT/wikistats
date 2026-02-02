@@ -19,11 +19,11 @@ type Credentials struct {
 }
 
 type Service struct {
-	db   database.Executor
+	db   database.Repository
 	auth *AuthService
 }
 
-func NewService(db database.Executor) *Service {
+func NewService(db database.Repository) *Service {
 	auth := &AuthService{
 		tokenCache: make(map[string]time.Time),
 	}

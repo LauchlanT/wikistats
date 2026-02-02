@@ -20,7 +20,7 @@ type Stats struct {
 	Servers  int
 }
 
-type Executor interface {
+type Repository interface {
 	UpdateDatabase(ctx context.Context, s StatsUpdate) error
 	MigrateDatabase(ctx context.Context) error
 	AddUser(ctx context.Context, username string, password string) error
@@ -29,7 +29,7 @@ type Executor interface {
 	Close() error
 }
 
-func New(cfg config.DatabaseConfig) (Executor, error) {
+func New(cfg config.DatabaseConfig) (Repository, error) {
 	switch cfg.Type {
 	case "scylla":
 		return NewScyllaDatabase(cfg)

@@ -8,5 +8,5 @@ import (
 
 type Consumer interface {
 	Connect(context.Context) (io.Reader, error)
-	Consume(context.Context, io.Reader, database.Executor) error
+	Consume(context.Context, io.Reader, database.Repository) error
 }
