@@ -82,6 +82,7 @@ jobs:
         run: |
           if [ -f "${{ matrix.part }}/docker-compose-test.yml" ]; then
             docker compose -f ${{ matrix.part }}/docker-compose-test.yml up \
+              --attach test-runner \
               --exit-code-from test-runner \
               --abort-on-container-exit
           else
