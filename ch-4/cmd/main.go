@@ -45,7 +45,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("database initialization failed: %w", err)
 	}
-	defer db.Close()
+	defer func(db database.Repository) {
+		err = errors.Join(err, db.Close())
+	}(db)
 	if err := db.MigrateDatabase(ctx); err != nil {
 		return fmt.Errorf("error migrating database: %w", err)
 	}
