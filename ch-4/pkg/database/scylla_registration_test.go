@@ -31,8 +31,12 @@ func init() {
 		}
 
 		cleanup := func() {
-			db.session.Query("DROP KEYSPACE IF EXISTS " + cfg.Database.Keyspace).Exec()
-			db.Close()
+			if err := db.session.Query("DROP KEYSPACE IF EXISTS " + cfg.Database.Keyspace).Exec(); err != nil {
+				t.Errorf("dropping keyspace: %v", err)
+			}
+			if err := db.Close(); err != nil {
+				t.Errorf("closing connection: %v", err)
+			}
 		}
 
 		return db, cleanup

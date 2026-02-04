@@ -253,12 +253,16 @@ func TestReconnect(t *testing.T) {
 	go func() {
 		errChan <- consumer.Consume(context.Background(), r, db)
 	}()
-	w1.Write([]byte(`data: {"user":"alice","bot":false,"server_url":"server1","meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n"))
+	if _, err := w1.Write([]byte(`data: {"user":"alice","bot":false,"server_url":"server1","meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n")); err != nil {
+		t.Fatalf("Error writing to w1: %v", err)
+	}
 	streamError := http2.StreamError{
 		StreamID: 1,
 		Code:     http2.ErrCodeCancel,
 	}
-	w1.CloseWithError(streamError)
+	if err := w1.CloseWithError(streamError); err != nil {
+		t.Fatalf("Error closing writer w1: %v", err)
+	}
 	time.Sleep(100 * time.Millisecond)
 	stats, err := db.GetStats(t.Context())
 	if err != nil {
@@ -277,8 +281,12 @@ func TestReconnect(t *testing.T) {
 	if !strings.HasSuffix(reconnectURL, expectedSuffix) {
 		t.Errorf("Timestamp not correctly generated in reconnect URL.\nGot: %s\nExpected suffix: %s", reconnectURL, expectedSuffix)
 	}
-	w2.Write([]byte(`data: {"user":"bob","bot":true,"server_url":"server2","meta":{"id":"2"}}` + "\n\n"))
-	w2.Close()
+	if _, err := w2.Write([]byte(`data: {"user":"bob","bot":true,"server_url":"server2","meta":{"id":"2"}}` + "\n\n")); err != nil {
+		t.Fatalf("Error writing to w2: %v", err)
+	}
+	if err := w2.Close(); err != nil {
+		t.Fatalf("Error closing writer w2: %v", err)
+	}
 	select {
 	case consumeErr := <-errChan:
 		if consumeErr != nil && consumeErr != io.EOF && !strings.Contains(consumeErr.Error(), "StreamError") {

@@ -59,14 +59,14 @@ jobs:
         working-directory: ${{ matrix.part }}
         run: |
           go mod download || true
-          go vet ./...
+          go vet -tags=unit,integration ./...
       
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           working-directory: ${{ matrix.part }}
-          args: --timeout=5m
+          args: --timeout=5m --build-tags=unit,integration
 
   test:
     needs: [detect-changes, lint]
