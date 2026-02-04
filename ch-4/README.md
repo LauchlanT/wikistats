@@ -70,3 +70,7 @@ The login endpoint will return a string upon successful login - copy this as the
 ```http://localhost:7000/stats``` requires the inclusion of the bearer token to view the statistics collected by the application.
 
 ```http://localhost:7000/logout``` can also be hit to revoke the bearer token the request is sent with.
+
+## Workflows
+
+Pushes to main will result in the build.yml workflow running, which validates the code with got vet and golangci-lint, runs all tests using docker-compose-test.yml, and pushes the application's image to ghcr.io/lauchlant/wikistats
