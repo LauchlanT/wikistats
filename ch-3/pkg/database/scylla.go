@@ -100,11 +100,10 @@ func (s *ScyllaDB) AddUser(ctx context.Context, username string, password string
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
 		return fmt.Errorf("hashing password: %w", err)
-	} else {
-		err = s.session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, username, string(hash)).WithContext(ctx).Exec()
-		if err != nil {
-			return fmt.Errorf("setting password for %s account: %w", username, err)
-		}
+	}
+	err = s.session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, username, string(hash)).WithContext(ctx).Exec()
+	if err != nil {
+		return fmt.Errorf("setting password for %s account: %w", username, err)
 	}
 	return nil
 }

@@ -101,6 +101,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error generating bearer token: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	tokenResponse := &TokenResponse{Token: *token}
@@ -115,6 +116,7 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := s.auth.DeleteToken(token); err != nil {
 		log.Printf("Error deleting token from cache: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
