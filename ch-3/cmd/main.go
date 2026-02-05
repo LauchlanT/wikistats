@@ -14,7 +14,6 @@ import (
 	"wikistats/pkg/config"
 	"wikistats/pkg/consumer"
 	"wikistats/pkg/database"
-	"wikistats/pkg/utils"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -30,7 +29,7 @@ func run() error {
 	envFile := flag.String("env", ".env", "override path to environment variables file")
 	flag.Parse()
 	if *envFile != "" {
-		if err := utils.LoadEnv(*envFile); err != nil {
+		if err := config.LoadEnv(*envFile); err != nil {
 			log.Printf("Could not load env file: %v", err)
 		}
 	}
