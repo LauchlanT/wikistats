@@ -9,13 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"wikistats/pkg/api"
 	"wikistats/pkg/config"
 	"wikistats/pkg/consumer"
 	"wikistats/pkg/database"
 	"wikistats/pkg/utils"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -66,48 +67,58 @@ func run() error {
 		IdleTimeout:  cfg.API.IdleTimeout,
 	}
 
-	var wg sync.WaitGroup
-	errChan := make(chan error, 2)
+	g, ctx := errgroup.WithContext(ctx)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		log.Printf("Server starting on port %s", cfg.API.Port)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errChan <- fmt.Errorf("server error: %w", err)
-			cancel()
+	g.Go(func() error {
+		// Since http.Server doesn't support context, run in a goroutine and capture its error on a channel
+		serverErr := make(chan error, 1)
+		go func() {
+			log.Printf("Server starting on port %s", cfg.API.Port)
+			serverErr <- server.ListenAndServe()
+		}()
+
+		// Then gracefully shutdown the server if context is canceled, or return an error if unexpected shutdown occurs
+		select {
+		case <-ctx.Done():
+			log.Println("Shutdown signal received, stopping services...")
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Main.ShutdownTimeout)
+			defer shutdownCancel()
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("server forced to shutdown: %w", err)
+			}
+			if err := <-serverErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("server error during shutdown: %w", err)
+			}
+			return nil
+		case err := <-serverErr:
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("server error during operation: %w", err)
+			}
+			return nil
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	g.Go(func() error {
 		log.Println("Starting consumer")
 		stream, err := streamConsumer.Connect(ctx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			errChan <- fmt.Errorf("consumer connection error: %w", err)
-			cancel()
-			return
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("consumer connnection error: %w", err)
 		}
-		if err = streamConsumer.Consume(ctx, stream, db); err != nil && !errors.Is(err, context.Canceled) {
-			errChan <- fmt.Errorf("consumer processing error: %w", err)
-			cancel()
-		}
-	}()
 
-	<-ctx.Done()
-	log.Println("Shutdown signal received, stopping services...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Main.ShutdownTimeout)
-	defer shutdownCancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
-	}
-	wg.Wait()
-	close(errChan)
-	for e := range errChan {
-		if e != nil {
-			return e
+		if err := streamConsumer.Consume(ctx, stream, db); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("consumer processing error: %w", err)
 		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	log.Println("Application terminated gracefully")

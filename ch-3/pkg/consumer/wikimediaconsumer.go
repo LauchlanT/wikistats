@@ -25,6 +25,7 @@ type WikimediaConsumer struct {
 	client            *http.Client
 	reconnectionDelay time.Duration
 	userAgent         string
+	dbTimeout         time.Duration
 }
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
@@ -41,6 +42,7 @@ func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error)
 		},
 		reconnectionDelay: cfg.ReconnectionDelay,
 		userAgent:         cfg.UserAgent,
+		dbTimeout:         cfg.DBTimeout,
 	}, nil
 }
 
@@ -72,6 +74,9 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db databas
 		scanner.Buffer(buf, maxCapacity)
 		var lastTimestamp string
 		for scanner.Scan() {
+			if ctx.Err() != nil {
+				break
+			}
 			line := scanner.Bytes()
 			// Identify JSON data lines
 			if !bytes.HasPrefix(line, []byte("data: ")) {
@@ -85,8 +90,14 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db databas
 				continue
 			}
 			lastTimestamp = msg.Meta.DT
-			err := db.UpdateDatabase(ctx, database.StatsUpdate{Id: msg.Meta.ID, User: msg.User, Server: msg.ServerURL, IsBot: msg.Bot})
+			dbCtx, cancel := context.WithTimeout(ctx, c.dbTimeout)
+			err := db.UpdateDatabase(dbCtx, database.StatsUpdate{Id: msg.Meta.ID, User: msg.User, Server: msg.ServerURL, IsBot: msg.Bot})
+			cancel()
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					log.Printf("Database timeout for %+v", msg)
+					continue
+				}
 				return fmt.Errorf("requesting database update: %w", err)
 			}
 		}

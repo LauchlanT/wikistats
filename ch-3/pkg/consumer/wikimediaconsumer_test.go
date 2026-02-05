@@ -240,7 +240,7 @@ func TestReconnect(t *testing.T) {
 		},
 	}
 	consumer.client.Transport = mockTransport
-	consumer.reconnectionDelay = 10 * time.Millisecond
+	consumer.reconnectionDelay = cfg.Consumer.ReconnectionDelay
 	r, err := consumer.Connect(context.Background())
 	if err != nil {
 		t.Errorf("Got error: %v", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -19,9 +18,21 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
+type TokenResponse struct {
+	Token string `json:"token"`
+}
+
+type StatsResponse struct {
+	Messages int `json:"messages"`
+	Users    int `json:"users"`
+	Bots     int `json:"bots"`
+	Servers  int `json:"servers"`
+}
+
 type Service struct {
-	db   database.Repository
-	auth *AuthService
+	db      database.Repository
+	auth    *AuthService
+	timeout *TimeoutService
 }
 
 func NewService(cfg config.APIConfig, db database.Repository) *Service {
@@ -29,9 +40,13 @@ func NewService(cfg config.APIConfig, db database.Repository) *Service {
 		tokenCache:  make(map[string]time.Time),
 		tokenExpiry: cfg.TokenExpiry,
 	}
+	timeout := &TimeoutService{
+		timeout: cfg.WorkerTimeout,
+	}
 	return &Service{
-		db:   db,
-		auth: auth,
+		db:      db,
+		auth:    auth,
+		timeout: timeout,
 	}
 }
 
@@ -56,8 +71,9 @@ func (s *Service) Stats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
-	output := fmt.Sprintf("%d messages\n%d users\n%d bots\n%d servers", stats.Messages, stats.Users, stats.Bots, stats.Servers)
-	if _, err := w.Write([]byte(output)); err != nil {
+	w.Header().Set("Content-Type", "application/json")
+	statsResponse := &StatsResponse{Messages: stats.Messages, Users: stats.Users, Bots: stats.Bots, Servers: stats.Servers}
+	if err := json.NewEncoder(w).Encode(&statsResponse); err != nil {
 		log.Printf("Error responding to stats request: %v", err)
 	}
 }
@@ -86,7 +102,9 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error generating bearer token: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
-	if _, err := w.Write([]byte(*token)); err != nil {
+	w.Header().Set("Content-Type", "application/json")
+	tokenResponse := &TokenResponse{Token: *token}
+	if err := json.NewEncoder(w).Encode(&tokenResponse); err != nil {
 		log.Printf("Error responding to login request: %v", err)
 	}
 }
