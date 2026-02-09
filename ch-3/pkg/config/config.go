@@ -31,19 +31,21 @@ type DatabaseConfig struct {
 }
 
 type APIConfig struct {
-	Port         string
-	Username     string
-	Password     string
-	TokenExpiry  time.Duration
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
+	Port          string
+	Username      string
+	Password      string
+	TokenExpiry   time.Duration
+	ReadTimeout   time.Duration
+	WriteTimeout  time.Duration
+	IdleTimeout   time.Duration
+	WorkerTimeout time.Duration
 }
 
 type ConsumerConfig struct {
 	StreamURL         string
 	ReconnectionDelay time.Duration
 	UserAgent         string
+	DBTimeout         time.Duration
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -60,18 +62,20 @@ func LoadFromEnv() (*Config, error) {
 			BcryptCost:     parseIntOrDefault("BCRYPT_COST", 14),
 		},
 		API: APIConfig{
-			Port:         getEnvOrDefault("API_PORT", "7000"),
-			Username:     getEnvOrDefault("API_USER", "admin"),
-			Password:     getEnvOrDefault("API_PASSWORD", "admin"),
-			TokenExpiry:  parseDurationOrDefault("API_TOKEN_EXPIRY", 1*time.Hour),
-			ReadTimeout:  parseDurationOrDefault("API_READ_TIMEOUT", 10*time.Second),
-			WriteTimeout: parseDurationOrDefault("API_WRITE_TIMEOUT", 10*time.Second),
-			IdleTimeout:  parseDurationOrDefault("API_IDLE_TIMEOUT", 120*time.Second),
+			Port:          getEnvOrDefault("API_PORT", "7000"),
+			Username:      getEnvOrDefault("API_USER", "admin"),
+			Password:      getEnvOrDefault("API_PASSWORD", "admin"),
+			TokenExpiry:   parseDurationOrDefault("API_TOKEN_EXPIRY", 1*time.Hour),
+			ReadTimeout:   parseDurationOrDefault("API_READ_TIMEOUT", 10*time.Second),
+			WriteTimeout:  parseDurationOrDefault("API_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:   parseDurationOrDefault("API_IDLE_TIMEOUT", 120*time.Second),
+			WorkerTimeout: parseDurationOrDefault("API_WORKER_TIMEOUT", 5*time.Second),
 		},
 		Consumer: ConsumerConfig{
 			StreamURL:         getEnvOrDefault("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
 			ReconnectionDelay: parseDurationOrDefault("STREAM_RECONNECTION_DELAY", 120*time.Second),
 			UserAgent:         getEnvOrDefault("STREAM_USER_AGENT", "REDspace workshop (lauchlan.toal@redspace.com)"),
+			DBTimeout:         parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
 		},
 	}
 

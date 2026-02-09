@@ -15,7 +15,6 @@ import (
 	"time"
 	"wikistats/pkg/config"
 	"wikistats/pkg/database"
-	"wikistats/pkg/utils"
 
 	"golang.org/x/net/http2"
 )
@@ -78,7 +77,7 @@ func TestConnect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := utils.LoadEnv(envFile); err != nil {
+			if err := config.LoadEnv(envFile); err != nil {
 				t.Errorf("Could not load env file: %v", err)
 			}
 			cfg, err := config.LoadFromEnv()
@@ -151,7 +150,7 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := utils.LoadEnv(envFile); err != nil {
+			if err := config.LoadEnv(envFile); err != nil {
 				t.Errorf("Could not load env file: %v", err)
 			}
 			cfg, err := config.LoadFromEnv()
@@ -213,7 +212,7 @@ func (m *SequentialMockTransport) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func TestReconnect(t *testing.T) {
-	if err := utils.LoadEnv(envFile); err != nil {
+	if err := config.LoadEnv(envFile); err != nil {
 		t.Errorf("Could not load env file: %v", err)
 	}
 	cfg, err := config.LoadFromEnv()
@@ -240,7 +239,7 @@ func TestReconnect(t *testing.T) {
 		},
 	}
 	consumer.client.Transport = mockTransport
-	consumer.reconnectionDelay = 10 * time.Millisecond
+	consumer.reconnectionDelay = cfg.Consumer.ReconnectionDelay
 	r, err := consumer.Connect(context.Background())
 	if err != nil {
 		t.Errorf("Got error: %v", err)
@@ -259,7 +258,7 @@ func TestReconnect(t *testing.T) {
 		Code:     http2.ErrCodeCancel,
 	}
 	w1.CloseWithError(streamError)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(cfg.Consumer.ReconnectionDelay * 5)
 	stats, err := db.GetStats(t.Context())
 	if err != nil {
 		t.Errorf("Error getting stats: %v", err)

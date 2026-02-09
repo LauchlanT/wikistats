@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"wikistats/pkg/utils"
+	"wikistats/pkg/config"
 )
 
 const envFile string = "../../.test_env"
@@ -18,7 +18,7 @@ type dbImplementation struct {
 var dbImplementations []dbImplementation
 
 func registerImplementation(name string, factory func(t *testing.T) (Repository, func())) {
-	if err := utils.LoadEnv(envFile); err != nil {
+	if err := config.LoadEnv(envFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load env file: %v", err)
 	}
 	dbImplementations = append(dbImplementations, dbImplementation{name: name, factory: factory})
