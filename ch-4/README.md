@@ -20,7 +20,7 @@ Stop the application with ```docker compose down wikistats -v```
 
 ### 3. Docker compose (with ScyllaDB database):
 
-Edit the .env file and change ```DATABASE_TYPE=inmemory``` to ```DATABASE_TYPE=scylla```
+Edit the .env file and add ```DATABASE_TYPE=scylla```
 
 Start the application and a 3 node ScyllaDB cluster with ```docker compose --profile scylla up --build -d```
 

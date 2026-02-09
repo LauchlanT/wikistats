@@ -80,9 +80,6 @@ func (s *ScyllaDB) Close() error {
 }
 
 func (s *ScyllaDB) MigrateDatabase(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("migrating DB: %w", err)
-	}
 	queries := []string{
 		"CREATE TABLE IF NOT EXISTS messages (id text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS servers (name text PRIMARY KEY);",
@@ -92,7 +89,7 @@ func (s *ScyllaDB) MigrateDatabase(ctx context.Context) error {
 		"CREATE TABLE IF NOT EXISTS accounts (username text PRIMARY KEY, password text);",
 	}
 	for _, q := range queries {
-		if err := s.session.Query(q).Exec(); err != nil {
+		if err := s.session.Query(q).WithContext(ctx).Exec(); err != nil {
 			return fmt.Errorf("migration failed for query [%s]: %w", q, err)
 		}
 	}
@@ -100,25 +97,18 @@ func (s *ScyllaDB) MigrateDatabase(ctx context.Context) error {
 }
 
 func (s *ScyllaDB) AddUser(ctx context.Context, username string, password string) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("adding user: %w", err)
-	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
 		return fmt.Errorf("hashing password: %w", err)
-	} else {
-		err = s.session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, username, string(hash)).WithContext(ctx).Exec()
-		if err != nil {
-			return fmt.Errorf("setting password for %s account: %w", username, err)
-		}
+	}
+	err = s.session.Query(`INSERT INTO accounts (username, password) VALUES (?, ?) IF NOT EXISTS`, username, string(hash)).WithContext(ctx).Exec()
+	if err != nil {
+		return fmt.Errorf("setting password for %s account: %w", username, err)
 	}
 	return nil
 }
 
 func (s *ScyllaDB) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("updating database: %w", err)
-	}
 	if u.Id == "" || u.User == "" || u.Server == "" {
 		return fmt.Errorf("inserting empty values %+v", u)
 	}
@@ -174,9 +164,6 @@ func (s *ScyllaDB) incrementStat(ctx context.Context, statName string) error {
 }
 
 func (s *ScyllaDB) GetStats(ctx context.Context) (*Stats, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("getting stats: %w", err)
-	}
 	var statName string
 	var statValue int64
 	var stat Stats
@@ -200,9 +187,6 @@ func (s *ScyllaDB) GetStats(ctx context.Context) (*Stats, error) {
 }
 
 func (s *ScyllaDB) ValidateLogin(ctx context.Context, username string, password string) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("validating login: %w", err)
-	}
 	var hash string
 	err := s.session.Query(`SELECT password FROM accounts WHERE username = ?`, username).WithContext(ctx).Scan(&hash)
 	if err != nil {
