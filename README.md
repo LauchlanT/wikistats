@@ -15,3 +15,7 @@ Add a ScyllaDB service in its own Docker container, configure Docker Compose to 
 ch-4:
 
 Add a Github Actions workflow which triggers on pushes to main. It validates the code with go vet and golangci-lint, runs all unit and integration tests, and pushes the application image to ghcr.io.
+
+ch-5:
+
+Split the application into a producer that reads from the Wikimedia stream and pushes messages to Redpanda, a consumer that reads from Redpanda and stores stats in the database, and an API server that makes the stats in the database available to an API.
