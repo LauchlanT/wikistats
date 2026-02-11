@@ -13,9 +13,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"wikistats/pkg/config"
-	"wikistats/pkg/database"
-	"wikistats/pkg/models"
+	"wikistats/internal/config"
+	"wikistats/internal/database"
+	"wikistats/internal/models"
 
 	"golang.org/x/net/http2"
 )

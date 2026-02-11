@@ -3,7 +3,7 @@ package consumer
 import (
 	"context"
 	"io"
-	"wikistats/pkg/database"
+	"wikistats/internal/database"
 )
 
 type Consumer interface {

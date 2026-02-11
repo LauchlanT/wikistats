@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"wikistats/pkg/config"
-	"wikistats/pkg/database"
+	"wikistats/internal/config"
+	"wikistats/internal/database"
 
 	"golang.org/x/net/http2"
 )

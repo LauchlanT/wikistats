@@ -10,10 +10,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"wikistats/pkg/api"
-	"wikistats/pkg/config"
-	"wikistats/pkg/consumer"
-	"wikistats/pkg/database"
+	"wikistats/internal/api"
+	"wikistats/internal/config"
+	"wikistats/internal/consumer"
+	"wikistats/internal/database"
 
 	"golang.org/x/sync/errgroup"
 )

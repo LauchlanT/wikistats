@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 )
 
 type StatsUpdate struct {

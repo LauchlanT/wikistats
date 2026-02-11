@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"wikistats/pkg/config"
-	"wikistats/pkg/database"
+	"wikistats/internal/config"
+	"wikistats/internal/database"
 )
 
 type Credentials struct {

@@ -4,7 +4,7 @@ package database
 
 import (
 	"testing"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 )
 
 func init() {

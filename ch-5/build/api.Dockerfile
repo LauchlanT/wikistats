@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY cmd /app/cmd
-COPY pkg /app/pkg
+COPY pkg /app/internal
 COPY .env /app/.env
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main cmd/main.go

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 
 	"golang.org/x/crypto/bcrypt"
 )

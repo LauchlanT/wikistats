@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 )
 
 const envFile string = "../../.test_env"

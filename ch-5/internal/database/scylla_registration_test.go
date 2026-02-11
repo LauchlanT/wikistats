@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 )
 
 func init() {

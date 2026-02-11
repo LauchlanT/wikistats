@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"wikistats/pkg/config"
+	"wikistats/internal/config"
 
 	"github.com/gocql/gocql"
 	"golang.org/x/crypto/bcrypt"
