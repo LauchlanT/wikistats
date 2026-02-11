@@ -22,7 +22,9 @@ type MainConfig struct {
 }
 
 type DatabaseConfig struct {
-	Type           string   // "scylla" or "inmemory"
+	Type           string // "scylla" or "inmemory"
+	URL            string
+	Port           string
 	Hosts          []string // ScyllaDB hosts
 	Keyspace       string
 	Consistency    gocql.Consistency
@@ -55,6 +57,8 @@ func LoadFromEnv() (*Config, error) {
 		},
 		Database: DatabaseConfig{
 			Type:           getEnvOrDefault("DATABASE_TYPE", "inmemory"),
+			URL:            getEnvOrDefault("DATABASE_URL", "localhost"),
+			Port:           getEnvOrDefault("DATABASE_PORT", "50051"),
 			Hosts:          splitEnv("SCYLLA_HOSTS", ","),
 			Keyspace:       os.Getenv("SCYLLA_KEYSPACE"),
 			Consistency:    parseConsistencyOrDefault("SCYLLA_CONSISTENCY", gocql.Quorum),

@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"wikistats/internal/api"
 	"wikistats/internal/config"
-	"wikistats/internal/consumer"
 	"wikistats/internal/database"
 
 	"golang.org/x/sync/errgroup"
@@ -20,7 +19,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		log.Printf("Application error: %v", err)
+		log.Printf("Server error: %v", err)
 		os.Exit(1)
 	}
 }
@@ -41,24 +40,13 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db, err := database.New(cfg.Database)
+	db, err := database.Connect(cfg.Database.URL)
 	if err != nil {
-		return fmt.Errorf("database initialization failed: %w", err)
+		return fmt.Errorf("database connection failed: %w", err)
 	}
 	defer func(db database.Repository) {
-		err = errors.Join(err, db.Close())
+		err = errors.Join(err, db.Disconnect())
 	}(db)
-	if err := db.MigrateDatabase(ctx); err != nil {
-		return fmt.Errorf("error migrating database: %w", err)
-	}
-	if err := db.AddUser(ctx, cfg.API.Username, cfg.API.Password); err != nil {
-		return fmt.Errorf("error creating user account: %w", err)
-	}
-
-	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
-	if err != nil {
-		return fmt.Errorf("error initializing consumer: %w", err)
-	}
 
 	server := &http.Server{
 		Addr:         ":" + cfg.API.Port,
@@ -97,25 +85,6 @@ func run() error {
 			}
 			return nil
 		}
-	})
-
-	g.Go(func() error {
-		log.Println("Starting consumer")
-		stream, err := streamConsumer.Connect(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-			return fmt.Errorf("consumer connnection error: %w", err)
-		}
-
-		if err := streamConsumer.Consume(ctx, stream, db); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-			return fmt.Errorf("consumer processing error: %w", err)
-		}
-		return nil
 	})
 
 	if err := g.Wait(); err != nil {
