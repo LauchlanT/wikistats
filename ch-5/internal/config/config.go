@@ -23,7 +23,7 @@ type MainConfig struct {
 
 type DatabaseConfig struct {
 	Type           string // "scylla" or "inmemory"
-	URL            string
+	Host           string
 	Port           string
 	Hosts          []string // ScyllaDB hosts
 	Keyspace       string
@@ -57,7 +57,7 @@ func LoadFromEnv() (*Config, error) {
 		},
 		Database: DatabaseConfig{
 			Type:           getEnvOrDefault("DATABASE_TYPE", "inmemory"),
-			URL:            getEnvOrDefault("DATABASE_URL", "localhost"),
+			Host:           getEnvOrDefault("DATABASE_HOST", "wikidatabase"),
 			Port:           getEnvOrDefault("DATABASE_PORT", "50051"),
 			Hosts:          splitEnv("SCYLLA_HOSTS", ","),
 			Keyspace:       os.Getenv("SCYLLA_KEYSPACE"),

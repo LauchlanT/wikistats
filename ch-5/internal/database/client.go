@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -47,6 +48,7 @@ func (g *grpcRepository) GetStats(ctx context.Context) (*Stats, error) {
 }
 
 func (g *grpcRepository) ValidateLogin(ctx context.Context, username string, password string) error {
+	log.Printf("Requesting validation for user %s pasword %s", username, password)
 	_, err := g.client.ValidateLogin(ctx, &ValidateLoginRequest{
 		Username: username,
 		Password: password,
@@ -54,6 +56,7 @@ func (g *grpcRepository) ValidateLogin(ctx context.Context, username string, pas
 	if err != nil {
 		return fmt.Errorf("validating login via RPC: %w", err)
 	}
+	log.Printf("Validation successful")
 	return nil
 }
 

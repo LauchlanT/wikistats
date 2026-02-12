@@ -101,6 +101,7 @@ func run() error {
 	}
 	serverErr := make(chan error, 1)
 	go func() {
+		log.Println("gRPC server starting")
 		serverErr <- grpcServer.Serve(listener)
 	}()
 
@@ -125,7 +126,7 @@ func run() error {
 		if serveErr := <-serverErr; serveErr != nil {
 			return fmt.Errorf("server error: %w", serveErr)
 		}
-		log.Println("Application terminated")
+		log.Println("Database terminated")
 		return nil
 	case err := <-serverErr:
 		if err != nil {

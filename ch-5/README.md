@@ -2,15 +2,30 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 ## Running
 
-There are now multiple ways to run the application
+### 1. Dockerfiles (with in-memory database): 
 
-### 1. Dockerfile (with in-memory database): 
+Build the Docker images with 
+```
+docker build -t wikidatabase:latest -f build/database.Dockerfile .
+docker build -t wikiserver:latest -f build/server.Dockerfile .
+docker build -t wikiproducer:latest -f build/producer.Dockerfile .
+docker build -t wikiconsumer:latest -f build/consumer.Dockerfile .
+```
 
-Build the Docker image with ```docker build -t wikistats:latest .```
+Create a network for them with ```docker network create wikinet```
 
-Run the container with ```docker run -d --rm -p 7000:7000 --name wikistats wikistats:latest``` (or change the port number if you've changed the .env API_PORT value)
+Run the conatainers with (be sure to change ports if edited in .env)
+```
+docker run -d --rm --network wikinet --name wikidatabase -p 50051:50051 wikidatabase:latest
+docker run -d --rm --network wikinet --name wikiserver -p 7000:7000 wikiserver:latest
+```
 
-Stop the container with ```docker stop wikistats```
+Stop the containers and delete the network with
+```
+docker stop wikidatabase
+docker stop wikiserver
+docker network rm wikinet
+```
 
 ### 2. Docker compose (with in-memory database):
 

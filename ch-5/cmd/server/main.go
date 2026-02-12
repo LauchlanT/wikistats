@@ -13,8 +13,6 @@ import (
 	"wikistats/internal/api"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
-
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -40,12 +38,12 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db, err := database.Connect(cfg.Database.URL)
+	db, err := database.NewGRPCClient(cfg.Database.Host + ":" + cfg.Database.Port)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
 	defer func(db database.Repository) {
-		err = errors.Join(err, db.Disconnect())
+		err = errors.Join(err, db.Close())
 	}(db)
 
 	server := &http.Server{
@@ -56,41 +54,32 @@ func run() error {
 		IdleTimeout:  cfg.API.IdleTimeout,
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	// Since http.Server doesn't support context, run in a goroutine and capture its error on a channel
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Server starting on port %s", cfg.API.Port)
+		serverErr <- server.ListenAndServe()
+	}()
 
-	g.Go(func() error {
-		// Since http.Server doesn't support context, run in a goroutine and capture its error on a channel
-		serverErr := make(chan error, 1)
-		go func() {
-			log.Printf("Server starting on port %s", cfg.API.Port)
-			serverErr <- server.ListenAndServe()
-		}()
-
-		// Then gracefully shutdown the server if context is canceled, or return an error if unexpected shutdown occurs
-		select {
-		case <-ctx.Done():
-			log.Println("Shutdown signal received, stopping services...")
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Main.ShutdownTimeout)
-			defer shutdownCancel()
-			if err := server.Shutdown(shutdownCtx); err != nil {
-				return fmt.Errorf("server forced to shutdown: %w", err)
-			}
-			if err := <-serverErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
-				return fmt.Errorf("server error during shutdown: %w", err)
-			}
-			return nil
-		case err := <-serverErr:
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				return fmt.Errorf("server error during operation: %w", err)
-			}
-			return nil
+	// Then gracefully shutdown the server if context is canceled, or return an error if unexpected shutdown occurs
+	select {
+	case <-ctx.Done():
+		log.Println("Shutdown signal received, stopping services...")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Main.ShutdownTimeout)
+		defer shutdownCancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server forced to shutdown: %w", err)
 		}
-	})
-
-	if err := g.Wait(); err != nil {
-		return err
+		if err := <-serverErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("server error during shutdown: %w", err)
+		}
+		log.Println("API server terminated")
+		return nil
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("server error during operation: %w", err)
+		}
+		log.Println("API server terminated")
+		return nil
 	}
-
-	log.Println("Application terminated gracefully")
-	return nil
 }
