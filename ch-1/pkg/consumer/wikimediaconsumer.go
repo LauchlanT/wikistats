@@ -52,7 +52,7 @@ func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", c.url, err)
 	}
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("server response: %d %s", resp.StatusCode, resp.Status)
 	}
 	log.Println("Connected to Wikimedia Stream", c.url)
