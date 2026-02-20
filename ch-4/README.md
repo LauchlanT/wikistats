@@ -71,14 +71,6 @@ The login endpoint will return a string upon successful login - copy this as the
 
 ```http://localhost:7000/logout``` can also be hit to revoke the bearer token the request is sent with.
 
-## ScyllaDB data model
+## Workflows
 
-Moving from the in-memory database to ScyllaDB required some changes to the approach.
-
-### Unique value storage
-
-The in-memory database uses a set to enforce uniqueness of message ids, users, and servers. For ScyllaDB this can be achieved by creating tables which use those fields as the primary key for speed of reference, and using a lightweight transaction (LWT) to verify that the record does not already exist before inserting it.
-
-### Counting the values
-
-While the in-memory database supports an efficient len() operation, counting rows in Scylla is not so easy, it would require scanning all rows and counting them, a costly operation. Therefore an additional stats table is created, which has a record for the number of messages, the number of users, the number of bots, and the number of servers. Each time a record is inserted into one of the tables storing the lists of these values, the corresponding record in the stats table is incremented. For efficiency, the counts are stored as counters, allowing for atomic increments with better performance than incrementing an integer in a LWT would provide.
+Pushes to main will result in the build.yml workflow running, which validates the code with got vet and golangci-lint, runs all tests using docker-compose-test.yml, and pushes the application's image to ghcr.io/lauchlant/wikistats

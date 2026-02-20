@@ -2,6 +2,8 @@ package config
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -12,7 +14,9 @@ func LoadEnv(filename string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err = errors.Join(err, file.Close())
+	}(file)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -29,7 +33,9 @@ func LoadEnv(filename string) error {
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 
-		os.Setenv(key, value)
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("setting %s=%s: %w", key, value, err)
+		}
 	}
 
 	return scanner.Err()

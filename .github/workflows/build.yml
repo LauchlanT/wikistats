@@ -1,0 +1,136 @@
+name: Build Updated Chapters
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      changed: ${{ steps.set-matrix.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+      - name: Detect updated chapters
+        id: set-matrix
+        run: |
+          # Get list of changed chapter directories
+          CHANGED_DIRS=$(git diff --name-only HEAD^ HEAD | grep -E '^ch-[0-9]+/' | cut -d'/' -f1 | sort -u)
+          
+          if [ -z "$CHANGED_DIRS" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+            echo "No chapter directories changed"
+          else
+            # Convert to JSON array for matrix strategy
+            JSON_ARRAY=$(echo "$CHANGED_DIRS" | jq -R . | jq -s . | tr -d '\n')
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "matrix=$JSON_ARRAY" >> $GITHUB_OUTPUT
+            echo "Changed directories: $JSON_ARRAY"
+          fi
+
+  lint:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+          
+      - name: Run go vet
+        working-directory: ${{ matrix.part }}
+        run: |
+          go mod download || true
+          go vet -tags=unit,integration ./...
+      
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: ${{ matrix.part }}
+          args: --timeout=5m --build-tags=unit,integration
+
+  test:
+    needs: [detect-changes, lint]
+    if: needs.detect-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run tests for ${{ matrix.part }}
+        if: hashFiles(format('{0}/docker-compose-test.yml', matrix.part)) != ''
+        run: |
+          docker compose -f ${{ matrix.part }}/docker-compose-test.yml up \
+            --attach test-runner \
+            --exit-code-from test-runner \
+            --abort-on-container-exit
+      
+      - name: Cleanup
+        if: always() && hashFiles(format('{0}/docker-compose-test.yml', matrix.part)) != ''
+        run: |
+          docker compose -f ${{ matrix.part }}/docker-compose-test.yml down -v --remove-orphans || true
+
+  build-and-push:
+    needs: [detect-changes, test]
+    if: needs.detect-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        part: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable=true
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.part }}
+          file: ./${{ matrix.part }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.part }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.part }}

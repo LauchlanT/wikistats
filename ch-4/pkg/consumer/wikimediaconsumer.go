@@ -115,7 +115,10 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db databas
 				// Reconnect if the error is just the server cancelling the connection
 				if streamError.StreamID == 1 && streamError.Code == http2.ErrCodeCancel {
 					if rc, ok := r.(io.ReadCloser); ok {
-						rc.Close()
+						err := rc.Close()
+						if err != nil {
+							return fmt.Errorf("closing connection: %w", err)
+						}
 					}
 					// Update URL to pull messages since the last read timestamp
 					c.url = fmt.Sprintf("%s?since=%s", strings.Split(c.url, "?")[0], url.QueryEscape(lastTimestamp))
