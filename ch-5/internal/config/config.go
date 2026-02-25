@@ -14,6 +14,7 @@ type Config struct {
 	Main     MainConfig
 	Database DatabaseConfig
 	API      APIConfig
+	Producer ProducerConfig
 	Consumer ConsumerConfig
 }
 
@@ -43,11 +44,21 @@ type APIConfig struct {
 	WorkerTimeout time.Duration
 }
 
+type ProducerConfig struct {
+	RedpandaHost  string
+	RedpandaPort  string
+	RedpandaTopic string
+}
+
 type ConsumerConfig struct {
 	StreamURL         string
 	ReconnectionDelay time.Duration
 	UserAgent         string
 	DBTimeout         time.Duration
+	RedpandaHost      string
+	RedpandaPort      string
+	RedpandaTopic     string
+	RedpandaGroup     string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -75,11 +86,20 @@ func LoadFromEnv() (*Config, error) {
 			IdleTimeout:   parseDurationOrDefault("API_IDLE_TIMEOUT", 120*time.Second),
 			WorkerTimeout: parseDurationOrDefault("API_WORKER_TIMEOUT", 5*time.Second),
 		},
+		Producer: ProducerConfig{
+			RedpandaHost:  getEnvOrDefault("REDPANDA_HOST", "redpanda"),
+			RedpandaPort:  getEnvOrDefault("REDPANDA_PORT", "9092"),
+			RedpandaTopic: getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
+		},
 		Consumer: ConsumerConfig{
 			StreamURL:         getEnvOrDefault("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
 			ReconnectionDelay: parseDurationOrDefault("STREAM_RECONNECTION_DELAY", 120*time.Second),
 			UserAgent:         getEnvOrDefault("STREAM_USER_AGENT", "REDspace workshop (lauchlan.toal@redspace.com)"),
 			DBTimeout:         parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
+			RedpandaHost:      getEnvOrDefault("REDPANDA_HOST", "redpanda"),
+			RedpandaPort:      getEnvOrDefault("REDPANDA_PORT", "9092"),
+			RedpandaTopic:     getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
+			RedpandaGroup:     getEnvOrDefault("REDPANDA_GROUP", "wikistats-consumers"),
 		},
 	}
 
