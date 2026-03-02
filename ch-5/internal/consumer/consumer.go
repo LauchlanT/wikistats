@@ -2,11 +2,11 @@ package consumer
 
 import (
 	"context"
-	"io"
 	"wikistats/internal/database"
+
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type Consumer interface {
-	Connect(context.Context) (io.Reader, error)
-	Consume(context.Context, io.Reader, database.Repository) error
+	Consume(context.Context, database.Repository, *kgo.Client) error
 }

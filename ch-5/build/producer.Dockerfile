@@ -3,6 +3,8 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+RUN adduser -u 1000 -D -H appuser
+
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -19,5 +21,9 @@ FROM scratch AS container
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/.env /.env
 COPY --from=builder /app/main /main
+
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+USER 1000:1000
 
 CMD [ "/main" ]

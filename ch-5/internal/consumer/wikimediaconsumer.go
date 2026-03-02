@@ -1,146 +1,68 @@
 package consumer
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"net/url"
-	"strings"
 	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
 	"wikistats/internal/models"
 
-	"golang.org/x/net/http2"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"google.golang.org/protobuf/proto"
 )
 
 type WikimediaConsumer struct {
-	url               string
-	client            *http.Client
-	reconnectionDelay time.Duration
-	userAgent         string
-	dbTimeout         time.Duration
+	rpTimeout time.Duration
+	dbTimeout time.Duration
 }
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
-	// Configure transport to explicitly be x/net/http2 so errors can be inspected
-	transport := &http.Transport{}
-	if err := http2.ConfigureTransport(transport); err != nil {
-		return nil, err
-	}
-
 	return &WikimediaConsumer{
-		url: cfg.StreamURL,
-		client: &http.Client{
-			Transport: transport,
-		},
-		reconnectionDelay: cfg.ReconnectionDelay,
-		userAgent:         cfg.UserAgent,
-		dbTimeout:         cfg.DBTimeout,
+		rpTimeout: cfg.RPTimeout,
+		dbTimeout: cfg.DBTimeout,
 	}, nil
 }
 
-func (c *WikimediaConsumer) Connect(ctx context.Context) (io.Reader, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating http request: %w", err)
-	}
-	// Wikimedia requires an identifying user agent
-	req.Header.Set("User-Agent", c.userAgent)
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("connecting to %s: %w", c.url, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server response: %d %s", resp.StatusCode, resp.Status)
-	}
-	log.Println("Connected to Wikimedia Stream", c.url)
-	return resp.Body, nil
-}
-
-func (c *WikimediaConsumer) Consume(ctx context.Context, r io.Reader, db database.Repository) error {
-	// Infinite loop to handle reconnections
+func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp *kgo.Client) error {
 	for {
-		// Scan every line of stream to get change data
-		scanner := bufio.NewScanner(r)
-		const maxCapacity = 1024 * 1024
-		buf := make([]byte, maxCapacity)
-		scanner.Buffer(buf, maxCapacity)
-		var lastTimestamp string
-		for scanner.Scan() {
-			if ctx.Err() != nil {
-				break
-			}
-			line := scanner.Bytes()
-			// Identify JSON data lines
-			if !bytes.HasPrefix(line, []byte("data: ")) {
-				continue
-			}
-			// Strip the "data: " prefix
-			payload := line[6:]
-			var msg models.Message
-			if err := json.Unmarshal(payload, &msg); err != nil {
-				log.Printf("Error parsing JSON: %v", err)
-				continue
-			}
-			lastTimestamp = msg.Meta.DT
-			dbCtx, cancel := context.WithTimeout(ctx, c.dbTimeout)
-			err := db.UpdateDatabase(dbCtx, database.StatsUpdate{Id: msg.Meta.ID, User: msg.User, Server: msg.ServerURL, IsBot: msg.Bot})
-			cancel()
-			if err != nil {
-				if errors.Is(err, context.DeadlineExceeded) {
-					log.Printf("Database timeout for %+v", msg)
-					continue
-				}
-				return fmt.Errorf("requesting database update: %w", err)
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			// Terminate consumer if service is shutting down
-			if errors.Is(ctx.Err(), context.Canceled) {
-				return ctx.Err()
-			}
-			if errors.Is(err, bufio.ErrTooLong) {
-				// Skip lines that exceed the buffer and continue reading
-				continue
-			}
-			var streamError http2.StreamError
-			if errors.As(err, &streamError) {
-				// Reconnect if the error is just the server cancelling the connection
-				if streamError.StreamID == 1 && streamError.Code == http2.ErrCodeCancel {
-					if rc, ok := r.(io.ReadCloser); ok {
-						err := rc.Close()
-						if err != nil {
-							return fmt.Errorf("closing connection: %w", err)
-						}
-					}
-					// Update URL to pull messages since the last read timestamp
-					c.url = fmt.Sprintf("%s?since=%s", strings.Split(c.url, "?")[0], url.QueryEscape(lastTimestamp))
-					select {
-					case <-time.After(c.reconnectionDelay):
-						// Delay before reconnecting to avoid disconnects getting faster
-					case <-ctx.Done():
-						// Service was shut down during the wait
-						return ctx.Err()
-					}
-					r, err = c.Connect(ctx)
-					if err != nil {
-						return fmt.Errorf("reconnecting to stream: %w", err)
-					}
-					continue
-				}
-			}
-			return fmt.Errorf("scanning stream: %w", err)
-		} else {
-			// All input consumed
+		fetches := rp.PollFetches(ctx)
+		if ctx.Err() != nil {
 			break
 		}
+		if errs := fetches.Errors(); len(errs) > 0 {
+			for _, e := range errs {
+				log.Printf("Fetch error: topic=%s, partition=%d, err=%v", e.Topic, e.Partition, e.Err)
+			}
+			continue
+		}
+		fetches.EachRecord(func(record *kgo.Record) {
+			if err := c.processRecord(ctx, db, record); err != nil {
+				log.Printf("Processing error: %v", err)
+			}
+		})
+	}
+	return ctx.Err()
+}
+
+func (c *WikimediaConsumer) processRecord(ctx context.Context, db database.Repository, record *kgo.Record) error {
+	var exported models.Exported
+	if err := proto.Unmarshal(record.Value, &exported); err != nil {
+		return fmt.Errorf("unmarshal failed: %w", err)
+	}
+
+	dbCtx, cancel := context.WithTimeout(ctx, c.dbTimeout)
+	defer cancel()
+
+	err := db.UpdateDatabase(dbCtx, database.StatsUpdate{
+		Id:     exported.Id,
+		User:   exported.User,
+		Server: exported.Server,
+		IsBot:  exported.IsBot,
+	})
+	if err != nil {
+		return fmt.Errorf("database update failed: %w", err)
 	}
 	return nil
 }

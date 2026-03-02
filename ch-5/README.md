@@ -2,44 +2,19 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 ## Running
 
-### 1. Dockerfiles (with in-memory database): 
+### 1. Docker compose (with in-memory database):
 
-Build the Docker images with 
-```
-docker build -t wikidatabase:latest -f build/database.Dockerfile .
-docker build -t wikiserver:latest -f build/server.Dockerfile .
-docker build -t wikiproducer:latest -f build/producer.Dockerfile .
-docker build -t wikiconsumer:latest -f build/consumer.Dockerfile .
-```
+Start the application with ```docker compose -f deployment/docker-compose.yml up --build -d```
 
-Create a network for them with ```docker network create wikinet```
+Stop the application with ```docker compose -f deployment/docker-compose.yml down -v```
 
-Run the conatainers with (be sure to change ports if edited in .env)
-```
-docker run -d --rm --network wikinet --name wikidatabase -p 50051:50051 wikidatabase:latest
-docker run -d --rm --network wikinet --name wikiserver -p 7000:7000 wikiserver:latest
-```
-
-Stop the containers and delete the network with
-```
-docker stop wikidatabase
-docker stop wikiserver
-docker network rm wikinet
-```
-
-### 2. Docker compose (with in-memory database):
-
-Start the application with ```docker compose up wikistats --build -d```
-
-Stop the application with ```docker compose down wikistats -v```
-
-### 3. Docker compose (with ScyllaDB database):
+### 2. Docker compose (with ScyllaDB database):
 
 Edit the .env file and add ```DATABASE_TYPE=scylla```
 
-Start the application and a 3 node ScyllaDB cluster with ```docker compose --profile scylla up --build -d```
+Start the application and a 3 node ScyllaDB cluster with ```docker compose -f deployment/docker-compose.yml --profile scylla up --build -d```
 
-Stop the application with ```docker compose --profile scylla down``` (or ```docker compose --profile scylla down -v``` to clear the database)
+Stop the application with ```docker compose -f deployment/docker-compose.yml --profile scylla down``` (or ```docker compose -f deployment/docker-compose.yml --profile scylla down -v``` to clear the database)
 
 ## Testing
 
@@ -49,15 +24,15 @@ The application has both unit tests and integration tests, with several options 
 
 To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests.
 
-Start the test system with ```docker compose -f docker-compose-test.yml up -d```
+Start the test system with ```docker compose -f deployment/docker-compose-test.yml up -d```
 
-Once all services have started, monitor the logs with ```docker compose -f docker-compose-test.yml logs -f test-runner```
+Once all services have started, monitor the logs with ```docker compose -f deployment/docker-compose-test.yml logs -f test-runner```
 
-After all tests have completed, shut down the test system with ```docker compose -f docker-compose-test.yml down -v```
+After all tests have completed, shut down the test system with ```docker compose -f deployment/docker-compose-test.yml down -v```
 
 ### 2. Run unit tests locally
 
-Unit tests don't require spinning up the ScyllaDB cluster and can be run with ```go test -v -tags=unit ./...```
+Unit tests don't require spinning up the ScyllaDB cluster or Redpanda and can be run with ```go test -v -tags=unit ./...```
 
 ### 3. Run integration tests locally
 

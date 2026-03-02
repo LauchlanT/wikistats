@@ -1,7 +1,9 @@
 services:
   scylla-node1:
-    image: scylladb/scylla:latest
+    image: scylladb/scylla:2025.3
     container_name: scylla-node1
+    security_opt:
+      - no-new-privileges:true
     hostname: scylla
     profiles: ["scylla"]
     restart: always
@@ -19,13 +21,15 @@ services:
       retries: 20
       start_period: 60s
     volumes:
-      - scylla-data1:/var/lib/scylla
+      - scylla-data1:/var/lib/scylla:rw
     networks:
-      - wiki-network
+      - internal-network
 
   scylla-node2:
-    image: scylladb/scylla:latest
+    image: scylladb/scylla:2025.3
     container_name: scylla-node2
+    security_opt:
+      - no-new-privileges:true
     hostname: scylla
     profiles: ["scylla"]
     restart: always
@@ -47,13 +51,15 @@ services:
       scylla-node1:
         condition: service_healthy
     volumes:
-      - scylla-data2:/var/lib/scylla
+      - scylla-data2:/var/lib/scylla:rw
     networks:
-      - wiki-network
+      - internal-network
 
   scylla-node3:
-    image: scylladb/scylla:latest
+    image: scylladb/scylla:2025.3
     container_name: scylla-node3
+    security_opt:
+      - no-new-privileges:true
     hostname: scylla
     profiles: ["scylla"]
     restart: always
@@ -75,41 +81,63 @@ services:
       scylla-node2:
         condition: service_healthy
     volumes:
-      - scylla-data3:/var/lib/scylla
+      - scylla-data3:/var/lib/scylla:rw
     networks:
-      - wiki-network
+      - internal-network
   
   redpanda:
     image: redpandadata/redpanda:v23.3.13
     container_name: redpanda
-    networks:
-      - wiki-network
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --set
+    - redpanda.auto_create_topics_enabled=true
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda:9092
+    - --schema-registry-addr=127.0.0.1:8081
     healthcheck:
-      test: ["CMD-SHELL", "rpk topic list --brokers localhost:9092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda:9092 >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
+    volumes:
+      - redpanda-data1:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
 
   wikistats-database:
     build:
       context: ..
       dockerfile: build/database.Dockerfile
     container_name: wikistats-database
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
     hostname: database
+    read_only: true
     restart: on-failure
     networks:
-      - wiki-network
+      - internal-network
   
   wikistats-api:
     build:
       context: ..
       dockerfile: build/api.Dockerfile
     container_name: wikistats-api
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
     hostname: api
+    read_only: true
     restart: on-failure
     networks:
-      - wiki-network
+      - internal-network
+      - external-network
     ports:
       - "7000:7000"
     depends_on:
@@ -121,10 +149,15 @@ services:
       context: ..
       dockerfile: build/producer.Dockerfile
     container_name: wikistats-producer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
     hostname: producer
+    read_only: true
     restart: on-failure
     networks:
-      - wiki-network
+      - internal-network
+      - external-network
     depends_on:
       redpanda:
         condition: service_healthy
@@ -134,20 +167,27 @@ services:
       context: ..
       dockerfile: build/consumer.Dockerfile
     container_name: wikistats-consumer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
     hostname: consumer
+    read_only: true
     restart: on-failure
     networks:
-      - wiki-network
+      - internal-network
     depends_on:
       wikistats-database:
         condition: service_started
       redpanda:
         condition: service_healthy
-    
 
 networks:
-  wiki-network:
+  external-network:
     driver: bridge
+    internal: false
+  internal-network:
+    driver: bridge
+    internal: true
 
 volumes:
   scylla-data1:

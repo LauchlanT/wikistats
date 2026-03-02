@@ -11,6 +11,9 @@ import (
 	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Credentials struct {
@@ -63,6 +66,11 @@ func (s *Service) Stats(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Database timeout", http.StatusGatewayTimeout)
 			return
 		}
+		if status.Code(err) == codes.Unavailable || status.Code(err) == codes.DeadlineExceeded {
+			// gRPC connection issues
+			http.Error(w, "Database unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			// Client disconnected, no need to respond
 			return
@@ -88,6 +96,11 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.ValidateLogin(r.Context(), creds.Username, creds.Password); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			http.Error(w, "Database timeout", http.StatusGatewayTimeout)
+			return
+		}
+		if status.Code(err) == codes.Unavailable || status.Code(err) == codes.DeadlineExceeded {
+			// gRPC connection issues
+			http.Error(w, "Database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		if errors.Is(err, context.Canceled) {

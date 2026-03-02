@@ -44,21 +44,23 @@ type APIConfig struct {
 	WorkerTimeout time.Duration
 }
 
-type ProducerConfig struct {
-	RedpandaHost  string
-	RedpandaPort  string
-	RedpandaTopic string
+type ConsumerConfig struct {
+	RedpandaHost           string
+	RedpandaPort           string
+	RedpandaTopic          string
+	RedpandaGroup          string
+	RedpandaCommitInterval time.Duration
+	RPTimeout              time.Duration
+	DBTimeout              time.Duration
 }
 
-type ConsumerConfig struct {
+type ProducerConfig struct {
 	StreamURL         string
 	ReconnectionDelay time.Duration
 	UserAgent         string
-	DBTimeout         time.Duration
 	RedpandaHost      string
 	RedpandaPort      string
 	RedpandaTopic     string
-	RedpandaGroup     string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -68,7 +70,7 @@ func LoadFromEnv() (*Config, error) {
 		},
 		Database: DatabaseConfig{
 			Type:           getEnvOrDefault("DATABASE_TYPE", "inmemory"),
-			Host:           getEnvOrDefault("DATABASE_HOST", "wikidatabase"),
+			Host:           getEnvOrDefault("DATABASE_HOST", "database"),
 			Port:           getEnvOrDefault("DATABASE_PORT", "50051"),
 			Hosts:          splitEnv("SCYLLA_HOSTS", ","),
 			Keyspace:       os.Getenv("SCYLLA_KEYSPACE"),
@@ -86,20 +88,22 @@ func LoadFromEnv() (*Config, error) {
 			IdleTimeout:   parseDurationOrDefault("API_IDLE_TIMEOUT", 120*time.Second),
 			WorkerTimeout: parseDurationOrDefault("API_WORKER_TIMEOUT", 5*time.Second),
 		},
-		Producer: ProducerConfig{
-			RedpandaHost:  getEnvOrDefault("REDPANDA_HOST", "redpanda"),
-			RedpandaPort:  getEnvOrDefault("REDPANDA_PORT", "9092"),
-			RedpandaTopic: getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
-		},
 		Consumer: ConsumerConfig{
+			RedpandaHost:           getEnvOrDefault("REDPANDA_HOST", "redpanda"),
+			RedpandaPort:           getEnvOrDefault("REDPANDA_PORT", "9092"),
+			RedpandaTopic:          getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
+			RedpandaGroup:          getEnvOrDefault("REDPANDA_GROUP", "wikistats-consumers"),
+			RedpandaCommitInterval: parseDurationOrDefault("REDPANDA_COMMIT_INTERVAL", 10*time.Second),
+			RPTimeout:              parseDurationOrDefault("REDPANDA_TIMEOUT", 2*time.Second),
+			DBTimeout:              parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
+		},
+		Producer: ProducerConfig{
 			StreamURL:         getEnvOrDefault("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
 			ReconnectionDelay: parseDurationOrDefault("STREAM_RECONNECTION_DELAY", 120*time.Second),
 			UserAgent:         getEnvOrDefault("STREAM_USER_AGENT", "REDspace workshop (lauchlan.toal@redspace.com)"),
-			DBTimeout:         parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
 			RedpandaHost:      getEnvOrDefault("REDPANDA_HOST", "redpanda"),
 			RedpandaPort:      getEnvOrDefault("REDPANDA_PORT", "9092"),
 			RedpandaTopic:     getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
-			RedpandaGroup:     getEnvOrDefault("REDPANDA_GROUP", "wikistats-consumers"),
 		},
 	}
 
@@ -119,7 +123,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("SCYLLA_KEYSPACE required when DATABASE_TYPE=scylla")
 		}
 	}
-	if c.Consumer.StreamURL == "" {
+	if c.Producer.StreamURL == "" {
 		return fmt.Errorf("STREAM_URL is required")
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,7 +39,7 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db, err := database.NewGRPCClient(cfg.Database.Host + ":" + cfg.Database.Port)
+	db, err := database.NewGRPCClient(net.JoinHostPort(cfg.Database.Host, cfg.Database.Port))
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
