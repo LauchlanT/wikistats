@@ -85,15 +85,23 @@ jobs:
               --attach test-runner \
               --exit-code-from test-runner \
               --abort-on-container-exit
+          elif [ -f "${{ matrix.part }}/deployment/docker-compose-test.yml" ]; then
+            docker compose -f ${{ matrix.part }}/deployment/docker-compose-test.yml up \
+              --attach test-runner \
+              --exit-code-from test-runner \
+              --abort-on-container-exit
           else
             echo "No docker-compose-test.yml found in ${{ matrix.part }}, skipping tests"
-            exit 1
           fi
       
       - name: Cleanup
         if: always()
         run: |
-          docker compose -f ${{ matrix.part }}/docker-compose-test.yml down -v --remove-orphans || true
+          if [ -f "${{ matrix.part }}/docker-compose-test.yml" ]; then
+            docker compose -f ${{ matrix.part }}/docker-compose-test.yml down -v --remove-orphans || true
+          elif [ -f "${{ matrix.part }}/deployment/docker-compose-test.yml" ]; then
+            docker compose -f ${{ matrix.part }}/deployment/docker-compose-test.yml down -v --remove-orphans || true
+          fi
 
   build-and-push:
     needs: [detect-changes, test]
@@ -128,7 +136,19 @@ jobs:
             type=sha,prefix=,suffix=,format=short
             type=raw,value=latest,enable=true
 
-      - name: Build and push
+      - name: Detect Dockerfile structure
+        id: detect
+        run: |
+          if [ -f "./${{ matrix.part }}/Dockerfile" ]; then
+            echo "build_type=single" >> $GITHUB_OUTPUT
+          elif [ -d "./${{ matrix.part }}/build" ]; then
+            echo "build_type=multi" >> $GITHUB_OUTPUT
+          else
+            echo "build_type=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push single
+        if: steps.detect.outputs.build_type == 'single'
         uses: docker/build-push-action@v5
         with:
           context: ./${{ matrix.part }}
@@ -138,3 +158,39 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.part }}
           cache-to: type=gha,mode=max,scope=${{ matrix.part }}
+      
+      - name: Build and push multi
+        if: steps.detect.outputs.build_type == 'multi'
+        env:
+          RAW_TAGS: ${{ steps.meta.outputs.tags }}
+          RAW_LABELS: ${{ steps.meta.outputs.labels }}
+        run: |
+          base_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}"
+          shopt -s nullglob
+          dockerfiles=(./${{ matrix.part }}/build/*.Dockerfile)
+          if [ ${#dockerfiles[@]} -eq 0 ]; then
+            echo "No Dockerfiles found in ./${{ matrix.part }}/build/"
+            exit 1
+          fi
+          for dockerfile in "${dockerfiles[@]}"; do
+            service=$(basename "$dockerfile" .Dockerfile)
+            tag_args=()
+            while IFS= read -r tag || [ -n "$tag" ]; do
+              [ -z "$tag" ] && continue
+              service_tag="${tag//$base_image/$base_image-$service}"
+              tag_args+=("--tag" "$service_tag")
+            done <<< "$RAW_TAGS"
+            label_args=()
+            while IFS= read -r label || [ -n "$label" ]; do
+              [ -z "$label" ] && continue
+              label_args+=("--label" "$label")  # Removed escaping
+            done <<< "$RAW_LABELS"
+            docker buildx build \
+              --file "$dockerfile" \
+              "${tag_args[@]}" \
+              "${label_args[@]}" \
+              --push \
+              --cache-from "type=gha,scope=${{ matrix.part }}-${service}" \
+              --cache-to "type=gha,mode=max,scope=${{ matrix.part }}-${service}" \
+              "./${{ matrix.part }}"
+          done
