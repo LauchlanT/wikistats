@@ -206,7 +206,8 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 				t.Errorf("produced records count: got %d, want %d", len(records), tt.expectedCount)
 			}
 			if len(tt.wantRecords) > 0 {
-				for i, want := range tt.wantRecords {
+				for i := range tt.wantRecords {
+					want := &tt.wantRecords[i]
 					if i >= len(records) {
 						break
 					}
@@ -216,7 +217,7 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 						continue
 					}
 					if got.Id != want.Id || got.User != want.User || got.Server != want.Server || got.IsBot != want.IsBot {
-						t.Errorf("record %d: got %+v, want %+v", i, got, want)
+						t.Errorf("record %d: got %+v, want %+v", i, &got, &want)
 					}
 				}
 			}
