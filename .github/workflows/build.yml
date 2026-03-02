@@ -78,6 +78,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Increase max async i/o requests for ScyllaDB
+        run: sudo sysctl -w fs.aio-max-nr=1048576
+
       - name: Run tests for ${{ matrix.part }}
         run: |
           if [ -f "${{ matrix.part }}/docker-compose-test.yml" ]; then
