@@ -20,8 +20,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const envFile string = "../../.test_env"
-
 type mockRecordProducer struct {
 	records []*kgo.Record
 	mu      sync.Mutex

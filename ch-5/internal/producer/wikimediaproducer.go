@@ -128,12 +128,14 @@ func (p *WikimediaProducer) Produce(ctx context.Context, r io.Reader, rp recordP
 			log.Println("Forcing messages flush")
 			flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			rp.Flush(flushCtx)
+			if err := rp.Flush(flushCtx); err != nil {
+				return fmt.Errorf("flushing in-flight messages: %w", err)
+			}
 			select {
 			case <-done:
 				log.Println("Messages flushed")
 			case <-time.After(10 * time.Second):
-				log.Println("Timeout waiting for flush")
+				log.Println("Timeout waiting for callbacks")
 			}
 			return ctx.Err()
 		}
