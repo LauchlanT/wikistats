@@ -73,7 +73,7 @@ func run() error {
 	}
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		return fmt.Errorf("configuration error: %w", err)
+		return fmt.Errorf("loading configuration: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -81,16 +81,16 @@ func run() error {
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
-		return fmt.Errorf("database initialization failed: %w", err)
+		return fmt.Errorf("initializing database: %w", err)
 	}
 	defer func(db database.Repository) {
 		err = errors.Join(err, db.Close())
 	}(db)
 	if err := db.MigrateDatabase(ctx); err != nil {
-		return fmt.Errorf("error migrating database: %w", err)
+		return fmt.Errorf("migrating database: %w", err)
 	}
 	if err := db.AddUser(ctx, cfg.API.Username, cfg.API.Password); err != nil {
-		return fmt.Errorf("error creating user account: %w", err)
+		return fmt.Errorf("creating user account: %w", err)
 	}
 
 	grpcServer := grpc.NewServer()

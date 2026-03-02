@@ -33,7 +33,7 @@ func run() error {
 	}
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		return fmt.Errorf("configuration error: %w", err)
+		return fmt.Errorf("loading configuration: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -41,7 +41,7 @@ func run() error {
 
 	db, err := database.NewGRPCClient(net.JoinHostPort(cfg.Database.Host, cfg.Database.Port))
 	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer func(db database.Repository) {
 		err = errors.Join(err, db.Close())

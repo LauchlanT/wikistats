@@ -15,7 +15,6 @@ import (
 	"wikistats/internal/database"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -35,7 +34,7 @@ func run() error {
 	}
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		return fmt.Errorf("configuration error: %w", err)
+		return fmt.Errorf("loading configuration: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -48,13 +47,13 @@ func run() error {
 		kgo.AutoCommitInterval(cfg.Consumer.RedpandaCommitInterval),
 	)
 	if err != nil {
-		return fmt.Errorf("redpanda connection failed: %w", err)
+		return fmt.Errorf("connecting to Redpanda: %w", err)
 	}
 	defer rp.Close()
 
 	db, err := database.NewGRPCClient(cfg.Database.Host + ":" + cfg.Database.Port)
 	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer func(db database.Repository) {
 		err = errors.Join(err, db.Close())
@@ -62,25 +61,14 @@ func run() error {
 
 	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
 	if err != nil {
-		return fmt.Errorf("error initializing consumer: %w", err)
+		return fmt.Errorf("initializing consumer: %w", err)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		log.Println("Starting consumer")
-
-		if err := streamConsumer.Consume(ctx, db, rp); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-			return fmt.Errorf("consumer processing error: %w", err)
+	if err := streamConsumer.Consume(ctx, db, rp); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
 		}
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return err
+		return fmt.Errorf("consuming stream: %w", err)
 	}
 
 	log.Println("Application terminated gracefully")

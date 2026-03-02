@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"wikistats/internal/producer"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func run() error {
 	}
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
-		return fmt.Errorf("configuration error: %w", err)
+		return fmt.Errorf("loading configuration: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -46,38 +46,31 @@ func run() error {
 		kgo.AllowAutoTopicCreation(),
 	)
 	if err != nil {
-		return fmt.Errorf("redpanda connection failed: %w", err)
+		return fmt.Errorf("connecting to Redpanda: %w", err)
 	}
 	defer rp.Close()
 
 	streamProducer, err := producer.NewWikimediaProducer(cfg.Producer)
 	if err != nil {
-		return fmt.Errorf("error initializing producer: %w", err)
+		return fmt.Errorf("initializing producer: %w", err)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		log.Println("Starting producer")
-		stream, err := streamProducer.Connect(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-			return fmt.Errorf("producer connnection error: %w", err)
+	stream, err := streamProducer.Connect(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
 		}
+		return fmt.Errorf("connecting to stream: %w", err)
+	}
+	if closer, ok := stream.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
 
-		if err := streamProducer.Produce(ctx, stream, rp); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-			return fmt.Errorf("producer processing error: %w", err)
+	if err := streamProducer.Produce(ctx, stream, rp); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
 		}
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return err
+		return fmt.Errorf("producing stream: %w", err)
 	}
 
 	log.Println("Application terminated gracefully")
