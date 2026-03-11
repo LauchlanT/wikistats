@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option go_package = "github.com/lauchlant/wikistats/internal/proto/models";
+
+package models;
+
+message Exported {
+	string id = 1;
+	string user = 2;
+	string server = 3;
+	bool is_bot = 4;
+}
