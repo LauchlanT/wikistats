@@ -1,5 +1,23 @@
 A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams. The application uses Redpanda to separate the producer, which pulls from the stream, and the consumer, which pushes to the database.
 
+## Chapter 5 & 6 Updates
+
+### Splitting the application
+
+The application is split from a single Go application into four services. A producer, which reads messages from the Wikimedia stream and publishes them to Redpanda, a consumer, which pulls messages from Redpanda and updates the database with the statistics, a database, which manages the underlying database implementation and provides an API to access it, and a server, which provides the public API to view the stats collected by the application.
+
+### Communication
+
+Protobufs are used to communicate between the producer and Redpanda, the consumer and Redpanda, the consumer and the database, and the server and the database. Redpanda and the database each host an RPC server, with the database using gRPC.
+
+### Redpanda settings
+
+By default, the application runs Redpanda with three brokers and a replication factor of 3. This ensures availability of the service, and with 6 partitions for the topic the brokers can benefit from multiple consumers. Data is retained in Redpanda for a day, as the application is not intended to run for long periods.
+
+### Security
+
+Some hardening has been done for the services, such as using an external network connection only for services that require it, restricting privileges on volumes, using non-root users, and blocking privilege escalation. However, in a production system you would want to configure logins for ScyllaDB and for Redpanda. This is omitted here for the sake of making the application easier for others to run, without having to share secrets.
+
 ## Running
 
 ### 1. Docker compose (with in-memory database):
@@ -36,7 +54,7 @@ Unit tests don't require spinning up the ScyllaDB cluster or Redpanda and can be
 
 ### 3. Run integration tests locally
 
-Integration tests can be run against a running ScyllaDB cluster, but you must first edit .test-env to set ```SCYLLA_HOSTS=localhost```, and the Scylla cluster from docker-compose-test.yml must be running.
+Integration tests can be run against a running ScyllaDB cluster, but you must first edit .test-env to set ```SCYLLA_HOSTS=localhost```, and the Scylla cluster and Redpanda node from docker-compose-test.yml must be running.
 
 Then you can run ```go test -v -tags=integration ./...```
 
