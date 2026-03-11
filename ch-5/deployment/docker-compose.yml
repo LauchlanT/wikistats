@@ -183,15 +183,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KAFKA_BROKERS: "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"
-      CONSOLE_PROTOBUF_FILESYSTEM_ENABLED: "true"
-      CONSOLE_PROTOBUF_FILESYSTEM_PATHS: "/etc/protos"
-      CONSOLE_PROTOBUF_MAPPINGS: "wikistats.messages:models.Exported"
+      CONFIG_FILEPATH: "/etc/redpanda/redpanda-console.yml"
     volumes:
-      - ../api/proto:/etc/protos:ro
+      - ../api/proto/models.proto:/etc/protos/models/models.proto:ro
+      - ./redpanda-console.yml:/etc/redpanda/redpanda-console.yml:ro
     networks:
-      - internal-network
       - external-network
+      - internal-network
     depends_on:
       redpanda-node3:
         condition: service_healthy
