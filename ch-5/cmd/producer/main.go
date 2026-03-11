@@ -105,7 +105,9 @@ func run() error {
 		return fmt.Errorf("connecting to stream: %w", err)
 	}
 	if closer, ok := stream.(io.ReadCloser); ok {
-		defer closer.Close()
+		defer func(closer io.ReadCloser) {
+			err = errors.Join(err, closer.Close())
+		}(closer)
 	}
 
 	if err := streamProducer.Produce(ctx, stream, rp); err != nil {

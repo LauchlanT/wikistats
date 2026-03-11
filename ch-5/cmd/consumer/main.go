@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -51,7 +52,7 @@ func run() error {
 	}
 	defer rp.Close()
 
-	db, err := database.NewGRPCClient(cfg.Database.Host + ":" + cfg.Database.Port)
+	db, err := database.NewGRPCClient(net.JoinHostPort(cfg.Database.Host, cfg.Database.Port))
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}

@@ -31,9 +31,7 @@ func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error)
 func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp *kgo.Client) error {
 	var wg sync.WaitGroup
 	for i := 0; i < c.consumerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				fetches := rp.PollFetches(ctx)
 				if ctx.Err() != nil {
@@ -49,10 +47,12 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository,
 					if err := c.processRecord(ctx, db, record); err != nil {
 						log.Printf("Processing error: %v", err)
 					}
-					rp.CommitRecords(ctx, record)
+					if err := rp.CommitRecords(ctx, record); err != nil {
+						log.Printf("Error committing record: %v", err)
+					}
 				})
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	return ctx.Err()
