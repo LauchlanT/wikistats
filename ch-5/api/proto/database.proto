@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+option go_package = "github.com/lauchlant/wikistats/internal/proto/database";
+
+package database;
+
+message StatsUpdateMsg {
+    string id = 1;
+    string user = 2;
+    string server = 3;
+    bool is_bot = 4;
+}
+
+message UpdateDatabaseRequest {
+    StatsUpdateMsg stats_update = 1;
+}
+
+message UpdateDatabaseResponse {
+    bool success = 1;
+}
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+    int64 messages = 1;
+    int64 users = 2;
+    int64 bots = 3;
+    int64 servers = 4;
+}
+
+message ValidateLoginRequest {
+    string username = 1;
+    string password = 2;
+}
+
+message ValidateLoginResponse {
+    bool valid = 1;
+}
+
+service Repository {
+    rpc UpdateDatabase(UpdateDatabaseRequest) returns (UpdateDatabaseResponse);
+    rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+    rpc ValidateLogin(ValidateLoginRequest) returns (ValidateLoginResponse);
+}

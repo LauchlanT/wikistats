@@ -1,0 +1,285 @@
+services:
+  scylla-node1:
+    image: scylladb/scylla:2025.3
+    container_name: scylla-node1
+    security_opt:
+      - no-new-privileges:true
+    hostname: scylla
+    profiles: ["scylla"]
+    restart: always
+    command: >
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    volumes:
+      - scylla-data1:/var/lib/scylla:rw
+    networks:
+      - internal-network
+
+  scylla-node2:
+    image: scylladb/scylla:2025.3
+    container_name: scylla-node2
+    security_opt:
+      - no-new-privileges:true
+    hostname: scylla
+    profiles: ["scylla"]
+    restart: always
+    command: >
+      --seeds=scylla-node1
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      scylla-node1:
+        condition: service_healthy
+    volumes:
+      - scylla-data2:/var/lib/scylla:rw
+    networks:
+      - internal-network
+
+  scylla-node3:
+    image: scylladb/scylla:2025.3
+    container_name: scylla-node3
+    security_opt:
+      - no-new-privileges:true
+    hostname: scylla
+    profiles: ["scylla"]
+    restart: always
+    command: >
+      --seeds=scylla-node1
+      --developer-mode 1
+      --smp 1
+      --memory 1G
+      --overprovisioned 1
+      --api-address 0.0.0.0
+      --reactor-backend=epoll
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local'"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      scylla-node2:
+        condition: service_healthy
+    volumes:
+      - scylla-data3:/var/lib/scylla:rw
+    networks:
+      - internal-network
+  
+  redpanda-node1:
+    image: redpandadata/redpanda:v23.3.13
+    container_name: redpanda-node1
+    hostname: redpanda-node1
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --node-id=1
+    - --smp=1
+    - --memory=1G
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node1:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node1:33145
+    - --seeds=redpanda-node1:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node1:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redpanda-data1:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
+
+  redpanda-node2:
+    image: redpandadata/redpanda:v23.3.13
+    container_name: redpanda-node2
+    hostname: redpanda-node2
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --node-id=2
+    - --smp=1
+    - --memory=1G
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node2:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node2:33145
+    - --seeds=redpanda-node1:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node2:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redpanda-data2:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
+    depends_on:
+      redpanda-node1:
+        condition: service_healthy
+
+  redpanda-node3:
+    image: redpandadata/redpanda:v23.3.13
+    container_name: redpanda-node3
+    hostname: redpanda-node3
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --node-id=3
+    - --smp=1
+    - --memory=1G
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node3:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node3:33145
+    - --seeds=redpanda-node1:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node3:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redpanda-data3:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
+    depends_on:
+      redpanda-node2:
+        condition: service_healthy
+
+  redpanda-console:
+    image: redpandadata/console:v3.5.3
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"
+      CONSOLE_PROTOBUF_FILESYSTEM_ENABLED: "true"
+      CONSOLE_PROTOBUF_FILESYSTEM_PATHS: "/etc/protos"
+      CONSOLE_PROTOBUF_MAPPINGS: "wikistats.messages:models.Exported"
+    volumes:
+      - ../api/proto:/etc/protos:ro
+    networks:
+      - internal-network
+      - external-network
+    depends_on:
+      redpanda-node3:
+        condition: service_healthy
+    restart: on-failure
+
+  wikistats-database:
+    build:
+      context: ..
+      dockerfile: build/database.Dockerfile
+    container_name: wikistats-database
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: database
+    read_only: true
+    restart: on-failure
+    networks:
+      - internal-network
+  
+  wikistats-api:
+    build:
+      context: ..
+      dockerfile: build/api.Dockerfile
+    container_name: wikistats-api
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: api
+    read_only: true
+    restart: on-failure
+    networks:
+      - internal-network
+      - external-network
+    ports:
+      - "7000:7000"
+    depends_on:
+      wikistats-database:
+        condition: service_started
+
+  wikistats-producer:
+    build:
+      context: ..
+      dockerfile: build/producer.Dockerfile
+    container_name: wikistats-producer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: producer
+    read_only: true
+    restart: on-failure
+    networks:
+      - internal-network
+      - external-network
+    depends_on:
+      redpanda-node3:
+        condition: service_healthy
+  
+  wikistats-consumer:
+    build:
+      context: ..
+      dockerfile: build/consumer.Dockerfile
+    container_name: wikistats-consumer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: consumer
+    read_only: true
+    restart: on-failure
+    networks:
+      - internal-network
+    depends_on:
+      wikistats-database:
+        condition: service_started
+      redpanda-node3:
+        condition: service_healthy
+
+networks:
+  external-network:
+    driver: bridge
+    internal: false
+  internal-network:
+    driver: bridge
+    internal: true
+
+volumes:
+  scylla-data1:
+  scylla-data2:
+  scylla-data3:
+  redpanda-data1:
+  redpanda-data2:
+  redpanda-data3:
