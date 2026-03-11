@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/lauchlant/wikistats/internal/proto/database";
+option go_package = "github.com/lauchlant/wikistats/internal/database";
 
 package database;
 
