@@ -26,7 +26,7 @@ jobs:
         id: set-matrix
         run: |
           # Get list of changed chapter directories
-          CHANGED_DIRS=$(git diff --name-only HEAD^ HEAD | grep -E '^ch-[0-9]+/' | cut -d'/' -f1 | sort -u | uniq)
+          CHANGED_DIRS=$(git diff --name-only HEAD^ HEAD | grep -E '^ch-[0-9]+/' | cut -d'/' -f1 | sort -u)
           
           if [ -z "$CHANGED_DIRS" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -82,6 +82,7 @@ jobs:
         run: sudo sysctl -w fs.aio-max-nr=1048576
 
       - name: Run tests for ${{ matrix.part }}
+        if: hashFiles(format('{0}/docker-compose-test.yml', matrix.part)) != ''
         run: |
           if [ -f "${{ matrix.part }}/docker-compose-test.yml" ]; then
             docker compose -f ${{ matrix.part }}/docker-compose-test.yml up \
@@ -98,7 +99,7 @@ jobs:
           fi
       
       - name: Cleanup
-        if: always()
+        if: always() && hashFiles(format('{0}/docker-compose-test.yml', matrix.part)) != ''
         run: |
           if [ -f "${{ matrix.part }}/docker-compose-test.yml" ]; then
             docker compose -f ${{ matrix.part }}/docker-compose-test.yml down -v --remove-orphans || true
