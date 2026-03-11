@@ -1,13 +1,13 @@
-//go:build unit
-
 package producer
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -20,32 +20,26 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type mockRecordProducer struct {
-	records []*kgo.Record
-	mu      sync.Mutex
-	flushed bool
+type producerImplementation struct {
+	name    string
+	factory func(t *testing.T) (recordProducer, func() []*kgo.Record, func())
 }
 
-func (m *mockRecordProducer) Produce(ctx context.Context, r *kgo.Record, promise func(*kgo.Record, error)) {
-	m.mu.Lock()
-	m.records = append(m.records, r)
-	m.mu.Unlock()
-	if promise != nil {
-		promise(r, nil)
+var producerImplementations []producerImplementation
+
+func registerProducerImplementation(name string, factory func(t *testing.T) (recordProducer, func() []*kgo.Record, func())) {
+	producerImplementations = append(producerImplementations, producerImplementation{
+		name:    name,
+		factory: factory,
+	})
+}
+
+func TestMain(m *testing.M) {
+	if len(producerImplementations) == 0 {
+		fmt.Fprintln(os.Stderr, "FATAL: No producer implementations registered.")
+		os.Exit(1)
 	}
-}
-
-func (m *mockRecordProducer) Flush(ctx context.Context) error {
-	m.mu.Lock()
-	m.flushed = true
-	m.mu.Unlock()
-	return nil
-}
-
-func (m *mockRecordProducer) getRecords() []*kgo.Record {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.records
+	os.Exit(m.Run())
 }
 
 // Mock http.RoundTripper to intercept network calls
@@ -177,47 +171,50 @@ data: {"meta": { "id": "msg1" }, "user": "alice", "server_url": "server1", "bot"
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.ProducerConfig{
-				StreamURL:         "http://test.example.com/stream",
-				UserAgent:         "TestAgent/1.0",
-				ReconnectionDelay: 100 * time.Millisecond,
-			}
-			producer, err := NewWikimediaProducer(cfg)
-			if err != nil {
-				t.Fatalf("Error initializing producer: %v", err)
-			}
-
-			mockClient := &mockRecordProducer{}
-			reader := strings.NewReader(tt.inputData)
-
-			// Pass in context with timeout to avoid infinite loop
-			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-			defer cancel()
-			err = producer.Produce(ctx, reader, mockClient)
-			if (err != nil) && !tt.wantErr {
-				t.Errorf("Produce() unexpected error = %v", err)
-			}
-			records := mockClient.getRecords()
-			if len(records) != tt.expectedCount {
-				t.Errorf("produced records count: got %d, want %d", len(records), tt.expectedCount)
-			}
-			if len(tt.wantRecords) > 0 {
-				for i := range tt.wantRecords {
-					want := &tt.wantRecords[i]
-					if i >= len(records) {
-						break
+	for _, impl := range producerImplementations {
+		t.Run(impl.name, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					rp, getRecords, cleanup := impl.factory(t)
+					defer cleanup()
+					cfg := config.ProducerConfig{
+						StreamURL:         "http://test.example.com/stream",
+						UserAgent:         "TestAgent/1.0",
+						ReconnectionDelay: 100 * time.Millisecond,
 					}
-					var got models.Exported
-					if err := proto.Unmarshal(records[i].Value, &got); err != nil {
-						t.Errorf("Failed to unmarshal record %d: %v", i, err)
-						continue
+					producer, err := NewWikimediaProducer(cfg)
+					if err != nil {
+						t.Fatalf("Error initializing producer: %v", err)
 					}
-					if got.Id != want.Id || got.User != want.User || got.Server != want.Server || got.IsBot != want.IsBot {
-						t.Errorf("record %d: got %+v, want %+v", i, &got, &want)
+					reader := strings.NewReader(tt.inputData)
+					// Pass in context with timeout to avoid infinite loop
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					err = producer.Produce(ctx, reader, rp)
+					if (err != nil) && !tt.wantErr && !errors.Is(err, context.DeadlineExceeded) {
+						t.Errorf("Produce() unexpected error = %v", err)
 					}
-				}
+					records := getRecords()
+					if len(records) != tt.expectedCount {
+						t.Errorf("produced records count: got %d, want %d", len(records), tt.expectedCount)
+					}
+					if len(tt.wantRecords) > 0 {
+						for i := range tt.wantRecords {
+							want := &tt.wantRecords[i]
+							if i >= len(records) {
+								break
+							}
+							var got models.Exported
+							if err := proto.Unmarshal(records[i].Value, &got); err != nil {
+								t.Errorf("Failed to unmarshal record %d: %v", i, err)
+								continue
+							}
+							if got.Id != want.Id || got.User != want.User || got.Server != want.Server || got.IsBot != want.IsBot {
+								t.Errorf("record %d: got %+v, want %+v", i, &got, &want)
+							}
+						}
+					}
+				})
 			}
 		})
 	}
@@ -244,96 +241,100 @@ func (m *SequentialMockTransport) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func TestReconnect(t *testing.T) {
-	cfg := config.ProducerConfig{
-		StreamURL:         "http://test.example.com/stream",
-		UserAgent:         "TestAgent/1.0",
-		ReconnectionDelay: 50 * time.Millisecond,
-	}
+	for _, impl := range producerImplementations {
+		t.Run(impl.name, func(t *testing.T) {
+			cfg := config.ProducerConfig{
+				StreamURL:         "http://test.example.com/stream",
+				UserAgent:         "TestAgent/1.0",
+				ReconnectionDelay: 2 * time.Second,
+			}
 
-	producer, err := NewWikimediaProducer(cfg)
-	if err != nil {
-		t.Fatalf("Error initializing producer: %v", err)
-	}
+			producer, err := NewWikimediaProducer(cfg)
+			if err != nil {
+				t.Fatalf("Error initializing producer: %v", err)
+			}
 
-	r1, w1 := io.Pipe()
-	r2, w2 := io.Pipe()
-	mockTransport := &SequentialMockTransport{
-		responses: []*http.Response{
-			{
-				StatusCode: http.StatusOK,
-				Body:       r1,
-			},
-			{
-				StatusCode: http.StatusOK,
-				Body:       r2,
-			},
-		},
-	}
-	producer.client.Transport = mockTransport
+			r1, w1 := io.Pipe()
+			r2, w2 := io.Pipe()
+			mockTransport := &SequentialMockTransport{
+				responses: []*http.Response{
+					{
+						StatusCode: http.StatusOK,
+						Body:       r1,
+					},
+					{
+						StatusCode: http.StatusOK,
+						Body:       r2,
+					},
+				},
+			}
+			producer.client.Transport = mockTransport
+			rp, getRecords, cleanup := impl.factory(t)
+			defer cleanup()
 
-	mockClient := &mockRecordProducer{}
+			r, err := producer.Connect(context.Background())
+			if err != nil {
+				t.Errorf("Got error: %v", err)
+			}
 
-	r, err := producer.Connect(context.Background())
-	if err != nil {
-		t.Errorf("Got error: %v", err)
-	}
+			errChan := make(chan error, 1)
+			go func() {
+				errChan <- producer.Produce(context.Background(), r, rp)
+			}()
 
-	errChan := make(chan error, 1)
-	go func() {
-		errChan <- producer.Produce(context.Background(), r, mockClient)
-	}()
+			// Write first message then simulate disconnect
+			if _, err := w1.Write([]byte(`data: {"user":"alice","bot":false,"server_url":"server1","meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n")); err != nil {
+				t.Fatalf("Error writing to w1: %v", err)
+			}
 
-	// Write first message then simulate disconnect
-	if _, err := w1.Write([]byte(`data: {"user":"alice","bot":false,"server_url":"server1","meta":{"id":"1","dt":"2025-02-02T2:22:22Z"}}` + "\n\n")); err != nil {
-		t.Fatalf("Error writing to w1: %v", err)
-	}
+			streamError := http2.StreamError{
+				StreamID: 1,
+				Code:     http2.ErrCodeCancel,
+			}
+			if err := w1.CloseWithError(streamError); err != nil {
+				t.Fatalf("Error closing writer w1: %v", err)
+			}
 
-	streamError := http2.StreamError{
-		StreamID: 1,
-		Code:     http2.ErrCodeCancel,
-	}
-	if err := w1.CloseWithError(streamError); err != nil {
-		t.Fatalf("Error closing writer w1: %v", err)
-	}
+			time.Sleep(cfg.ReconnectionDelay * 5)
 
-	time.Sleep(cfg.ReconnectionDelay * 5)
+			records := getRecords()
+			if len(records) != 1 {
+				t.Errorf("Expected 1 record after first stream, got %d", len(records))
+			}
 
-	records := mockClient.getRecords()
-	if len(records) != 1 {
-		t.Errorf("Expected 1 record after first stream, got %d", len(records))
-	}
+			mockTransport.lock.Lock()
+			if len(mockTransport.requests) < 2 {
+				t.Fatalf("Expected 2 HTTP requests (initial connect + reconnect)")
+			}
+			reconnectURL := mockTransport.requests[1].URL.String()
+			mockTransport.lock.Unlock()
 
-	mockTransport.lock.Lock()
-	if len(mockTransport.requests) < 2 {
-		t.Fatalf("Expected 2 HTTP requests (initial connect + reconnect)")
-	}
-	reconnectURL := mockTransport.requests[1].URL.String()
-	mockTransport.lock.Unlock()
+			expectedSuffix := url.QueryEscape("2025-02-02T2:22:22Z")
+			if !strings.HasSuffix(reconnectURL, expectedSuffix) {
+				t.Errorf("Timestamp not correctly generated in reconnect URL.\nGot: %s\nExpected suffix: %s", reconnectURL, expectedSuffix)
+			}
 
-	expectedSuffix := url.QueryEscape("2025-02-02T2:22:22Z")
-	if !strings.HasSuffix(reconnectURL, expectedSuffix) {
-		t.Errorf("Timestamp not correctly generated in reconnect URL.\nGot: %s\nExpected suffix: %s", reconnectURL, expectedSuffix)
-	}
+			if _, err := w2.Write([]byte(`data: {"user":"bob","bot":true,"server_url":"server2","meta":{"id":"2"}}` + "\n\n")); err != nil {
+				t.Fatalf("Error writing to w2: %v", err)
+			}
+			if err := w2.Close(); err != nil {
+				t.Fatalf("Error closing writer w2: %v", err)
+			}
 
-	if _, err := w2.Write([]byte(`data: {"user":"bob","bot":true,"server_url":"server2","meta":{"id":"2"}}` + "\n\n")); err != nil {
-		t.Fatalf("Error writing to w2: %v", err)
-	}
-	if err := w2.Close(); err != nil {
-		t.Fatalf("Error closing writer w2: %v", err)
-	}
+			select {
+			case produceErr := <-errChan:
+				if produceErr != nil && produceErr != io.EOF && !strings.Contains(produceErr.Error(), "StreamError") {
+					t.Logf("Produce returned (may be expected error): %v", produceErr)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("Produce did not return after w2 was closed")
+			}
 
-	select {
-	case produceErr := <-errChan:
-		if produceErr != nil && produceErr != io.EOF && !strings.Contains(produceErr.Error(), "StreamError") {
-			t.Logf("Produce returned (may be expected error): %v", produceErr)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Produce did not return after w2 was closed")
-	}
-
-	time.Sleep(100 * time.Millisecond)
-	records = mockClient.getRecords()
-	if len(records) != 2 {
-		t.Errorf("Expected 2 total records, got %d", len(records))
+			time.Sleep(100 * time.Millisecond)
+			records = getRecords()
+			if len(records) != 2 {
+				t.Errorf("Expected 2 total records, got %d", len(records))
+			}
+		})
 	}
 }

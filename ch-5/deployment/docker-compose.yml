@@ -85,22 +85,26 @@ services:
     networks:
       - internal-network
   
-  redpanda:
+  redpanda-node1:
     image: redpandadata/redpanda:v23.3.13
-    container_name: redpanda
+    container_name: redpanda-node1
+    hostname: redpanda-node1
     security_opt:
       - no-new-privileges:true
     user: "101:101"
     command:
     - redpanda
     - start
-    - --set
-    - redpanda.auto_create_topics_enabled=true
+    - --node-id=1
+    - --smp=1
+    - --memory=1G
     - --kafka-addr=internal://0.0.0.0:9092
-    - --advertise-kafka-addr=internal://redpanda:9092
-    - --schema-registry-addr=127.0.0.1:8081
+    - --advertise-kafka-addr=internal://redpanda-node1:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node1:33145
+    - --seeds=redpanda-node1:33145
     healthcheck:
-      test: ["CMD-SHELL", "rpk topic list --brokers redpanda:9092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node1:9092 >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -109,6 +113,89 @@ services:
       - redpanda-data1:/var/lib/redpanda/data:rw
     networks:
       - internal-network
+
+  redpanda-node2:
+    image: redpandadata/redpanda:v23.3.13
+    container_name: redpanda-node2
+    hostname: redpanda-node2
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --node-id=2
+    - --smp=1
+    - --memory=1G
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node2:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node2:33145
+    - --seeds=redpanda-node1:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node2:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redpanda-data2:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
+    depends_on:
+      redpanda-node1:
+        condition: service_healthy
+
+  redpanda-node3:
+    image: redpandadata/redpanda:v23.3.13
+    container_name: redpanda-node3
+    hostname: redpanda-node3
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
+    command:
+    - redpanda
+    - start
+    - --node-id=3
+    - --smp=1
+    - --memory=1G
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node3:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node3:33145
+    - --seeds=redpanda-node1:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node3:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redpanda-data3:/var/lib/redpanda/data:rw
+    networks:
+      - internal-network
+    depends_on:
+      redpanda-node2:
+        condition: service_healthy
+
+  redpanda-console:
+    image: redpandadata/console:v3.5.3
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"
+      CONSOLE_PROTOBUF_FILESYSTEM_ENABLED: "true"
+      CONSOLE_PROTOBUF_FILESYSTEM_PATHS: "/etc/protos"
+      CONSOLE_PROTOBUF_MAPPINGS: "wikistats.messages:models.Exported"
+    volumes:
+      - ../api/proto:/etc/protos:ro
+    networks:
+      - internal-network
+      - external-network
+    depends_on:
+      redpanda-node3:
+        condition: service_healthy
+    restart: on-failure
 
   wikistats-database:
     build:
@@ -159,7 +246,7 @@ services:
       - internal-network
       - external-network
     depends_on:
-      redpanda:
+      redpanda-node3:
         condition: service_healthy
   
   wikistats-consumer:
@@ -178,7 +265,7 @@ services:
     depends_on:
       wikistats-database:
         condition: service_started
-      redpanda:
+      redpanda-node3:
         condition: service_healthy
 
 networks:
@@ -194,3 +281,5 @@ volumes:
   scylla-data2:
   scylla-data3:
   redpanda-data1:
+  redpanda-data2:
+  redpanda-data3:

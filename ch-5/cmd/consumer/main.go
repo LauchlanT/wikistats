@@ -6,9 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"wikistats/internal/config"
 	"wikistats/internal/consumer"
@@ -41,10 +41,10 @@ func run() error {
 	defer cancel()
 
 	rp, err := kgo.NewClient(
-		kgo.SeedBrokers(net.JoinHostPort(cfg.Consumer.RedpandaHost, cfg.Consumer.RedpandaPort)),
+		kgo.SeedBrokers(strings.Split(cfg.Consumer.RedpandaHost, ",")...),
 		kgo.ConsumerGroup(cfg.Consumer.RedpandaGroup),
 		kgo.ConsumeTopics(cfg.Consumer.RedpandaTopic),
-		kgo.AutoCommitInterval(cfg.Consumer.RedpandaCommitInterval),
+		kgo.DisableAutoCommit(),
 	)
 	if err != nil {
 		return fmt.Errorf("connecting to Redpanda: %w", err)

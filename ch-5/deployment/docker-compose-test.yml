@@ -75,28 +75,34 @@ services:
     networks:
       - test-network
     
-  redpanda:
+  redpanda-node1:
     image: redpandadata/redpanda:v23.3.13
-    container_name: redpanda
+    container_name: redpanda-node1
+    hostname: redpanda-node1
+    security_opt:
+      - no-new-privileges:true
+    user: "101:101"
     command:
     - redpanda
     - start
+    - --node-id=1
+    - --smp=1
+    - --memory=1G
     - --set
     - redpanda.auto_create_topics_enabled=true
-    - --kafka-addr=127.0.0.1:9092
-    - --advertise-kafka-addr=127.0.0.1:9092
-    - --schema-registry-addr=127.0.0.1:8081
-    ports:
-      - "9092:9092"
-      - "8081:8081"
+    - --kafka-addr=internal://0.0.0.0:9092
+    - --advertise-kafka-addr=internal://redpanda-node1:9092
+    - --rpc-addr=0.0.0.0:33145
+    - --advertise-rpc-addr=redpanda-node1:33145
+    - --seeds=redpanda-node1:33145
     healthcheck:
-      test: ["CMD-SHELL", "rpk topic list --brokers redpanda:9092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "rpk topic list --brokers redpanda-node1:9092 >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
     volumes:
-      - redpanda-data1:/var/lib/redpanda/data
+      - redpanda-data1:/var/lib/redpanda/data:rw
     networks:
       - test-network
 
@@ -110,6 +116,8 @@ services:
       - test-network
     depends_on:
       scylla-node3:
+        condition: service_healthy
+      redpanda-node1:
         condition: service_healthy
     command: >
       sh -c '

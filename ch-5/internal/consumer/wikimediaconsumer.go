@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
@@ -14,35 +15,46 @@ import (
 )
 
 type WikimediaConsumer struct {
-	rpTimeout time.Duration
-	dbTimeout time.Duration
+	rpTimeout     time.Duration
+	dbTimeout     time.Duration
+	consumerCount int
 }
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
 	return &WikimediaConsumer{
-		rpTimeout: cfg.RPTimeout,
-		dbTimeout: cfg.DBTimeout,
+		rpTimeout:     cfg.RPTimeout,
+		dbTimeout:     cfg.DBTimeout,
+		consumerCount: cfg.ConsumerThreadCount,
 	}, nil
 }
 
 func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp *kgo.Client) error {
-	for {
-		fetches := rp.PollFetches(ctx)
-		if ctx.Err() != nil {
-			break
-		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			for _, e := range errs {
-				log.Printf("Fetch error: topic=%s, partition=%d, err=%v", e.Topic, e.Partition, e.Err)
+	var wg sync.WaitGroup
+	for i := 0; i < c.consumerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				fetches := rp.PollFetches(ctx)
+				if ctx.Err() != nil {
+					return
+				}
+				if errs := fetches.Errors(); len(errs) > 0 {
+					for _, e := range errs {
+						log.Printf("Fetch error: topic=%s, partition=%d, err=%v", e.Topic, e.Partition, e.Err)
+					}
+					continue
+				}
+				fetches.EachRecord(func(record *kgo.Record) {
+					if err := c.processRecord(ctx, db, record); err != nil {
+						log.Printf("Processing error: %v", err)
+					}
+					rp.CommitRecords(ctx, record)
+				})
 			}
-			continue
-		}
-		fetches.EachRecord(func(record *kgo.Record) {
-			if err := c.processRecord(ctx, db, record); err != nil {
-				log.Printf("Processing error: %v", err)
-			}
-		})
+		}()
 	}
+	wg.Wait()
 	return ctx.Err()
 }
 

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/yourusername/wikistats/internal/proto/models";
+option go_package = "github.com/lauchlant/wikistats/internal/proto/models";
 
 package models;
 

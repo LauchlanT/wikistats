@@ -7,13 +7,15 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"wikistats/internal/config"
 	"wikistats/internal/producer"
 
+	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -22,6 +24,43 @@ func main() {
 		log.Printf("Server error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func configureTopic(ctx context.Context, cfg *config.Config) error {
+	// Create temporary admin client
+	client, err := kgo.NewClient(
+		kgo.SeedBrokers(strings.Split(cfg.Producer.RedpandaHost, ",")...),
+		kgo.RequestRetries(3),
+	)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	admin := kadm.NewClient(client)
+	defer admin.Close()
+
+	resp, err := admin.CreateTopics(
+		ctx,
+		cfg.Producer.TopicPartitions,
+		cfg.Producer.TopicReplication,
+		map[string]*string{
+			"retention.ms": &cfg.Producer.TopicRetention,
+		},
+		cfg.Producer.RedpandaTopic,
+	)
+	if err != nil {
+		return err
+	}
+
+	topicResp := resp[cfg.Producer.RedpandaTopic]
+	if topicResp.Err != nil {
+		if errors.Is(topicResp.Err, kerr.TopicAlreadyExists) {
+			return nil
+		}
+		return topicResp.Err
+	}
+
+	return nil
 }
 
 func run() error {
@@ -40,10 +79,13 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	if err := configureTopic(ctx, cfg); err != nil {
+		return fmt.Errorf("creating topic: %w", err)
+	}
+
 	rp, err := kgo.NewClient(
-		kgo.SeedBrokers(net.JoinHostPort(cfg.Producer.RedpandaHost, cfg.Producer.RedpandaPort)),
+		kgo.SeedBrokers(strings.Split(cfg.Producer.RedpandaHost, ",")...),
 		kgo.DefaultProduceTopic(cfg.Producer.RedpandaTopic),
-		kgo.AllowAutoTopicCreation(),
 	)
 	if err != nil {
 		return fmt.Errorf("connecting to Redpanda: %w", err)
