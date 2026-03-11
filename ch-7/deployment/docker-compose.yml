@@ -113,6 +113,7 @@ services:
       - redpanda-data1:/var/lib/redpanda/data:rw
     networks:
       - internal-network
+      - monitoring
 
   redpanda-node2:
     image: redpandadata/redpanda:v23.3.13
@@ -142,6 +143,7 @@ services:
       - redpanda-data2:/var/lib/redpanda/data:rw
     networks:
       - internal-network
+      - monitoring
     depends_on:
       redpanda-node1:
         condition: service_healthy
@@ -174,6 +176,7 @@ services:
       - redpanda-data3:/var/lib/redpanda/data:rw
     networks:
       - internal-network
+      - monitoring
     depends_on:
       redpanda-node2:
         condition: service_healthy
@@ -183,19 +186,36 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KAFKA_BROKERS: "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"
-      CONSOLE_PROTOBUF_FILESYSTEM_ENABLED: "true"
-      CONSOLE_PROTOBUF_FILESYSTEM_PATHS: "/etc/protos"
-      CONSOLE_PROTOBUF_MAPPINGS: "wikistats.messages:models.Exported"
+      CONFIG_FILEPATH: "/etc/redpanda/redpanda-console.yml"
     volumes:
-      - ../api/proto:/etc/protos:ro
+      - ../api/proto/models.proto:/etc/protos/models/models.proto:ro
+      - ./redpanda-console.yml:/etc/redpanda/redpanda-console.yml:ro
     networks:
-      - internal-network
       - external-network
+      - monitoring
     depends_on:
       redpanda-node3:
         condition: service_healthy
     restart: on-failure
+  
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - internal-network
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:12.4.1
+    volumes:
+      - ./grafana.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - grafana-data:/var/lib/grafana:rw
+    ports:
+      - "3000:3000"
+    networks:
+      - external-network
+      - monitoring
 
   wikistats-database:
     build:
@@ -275,6 +295,9 @@ networks:
   internal-network:
     driver: bridge
     internal: true
+  monitoring:
+    driver: bridge
+    internal: true
 
 volumes:
   scylla-data1:
@@ -283,3 +306,4 @@ volumes:
   redpanda-data1:
   redpanda-data2:
   redpanda-data3:
+  grafana-data:
