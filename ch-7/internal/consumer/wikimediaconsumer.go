@@ -10,9 +10,29 @@ import (
 	"wikistats/internal/database"
 	"wikistats/internal/models"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/protobuf/proto"
 )
+
+var (
+	metricEventsConsumed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consumer_events_consumed",
+		Help: "Total number of events consumed from Redpanda",
+	})
+	metricEventsProcessed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consumer_events_processed",
+		Help: "Total number of events that successfully processed",
+	})
+	metricEventsFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consumer_events_failed",
+		Help: "Total number of events that failed to process",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(metricEventsConsumed, metricEventsProcessed, metricEventsFailed)
+}
 
 type WikimediaConsumer struct {
 	rpTimeout     time.Duration
@@ -44,11 +64,21 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository,
 					continue
 				}
 				fetches.EachRecord(func(record *kgo.Record) {
+					processed := true
 					if err := c.processRecord(ctx, db, record); err != nil {
 						log.Printf("Processing error: %v", err)
+						processed = false
 					}
 					if err := rp.CommitRecords(ctx, record); err != nil {
 						log.Printf("Error committing record: %v", err)
+					} else {
+						// Increment metrics only on successful commits to avoid doublecounting
+						metricEventsConsumed.Inc()
+						if processed {
+							metricEventsProcessed.Inc()
+						} else {
+							metricEventsFailed.Inc()
+						}
 					}
 				})
 			}

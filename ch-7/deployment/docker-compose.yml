@@ -200,16 +200,24 @@ services:
   
   prometheus:
     image: prom/prometheus:v3.10.0
+    hostname: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - internal-network
       - monitoring
+    depends_on:
+      wikistats-producer:
+        condition: service_started
+      wikistats-consumer:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:12.4.1
     volumes:
       - ./grafana.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./grafana_provider.yml:/etc/grafana/provisioning/dashboards/provider.yaml
+      - ./grafana_dashboard.json:/var/lib/grafana/dashboards/wikistats.json
       - grafana-data:/var/lib/grafana:rw
     ports:
       - "3000:3000"
