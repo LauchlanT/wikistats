@@ -33,6 +33,11 @@ func LoadEnv(filename string) error {
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 
+		// Skip environment variables that are already defined
+		if _, found := os.LookupEnv(key); found {
+			continue
+		}
+
 		if err := os.Setenv(key, value); err != nil {
 			return fmt.Errorf("setting %s=%s: %w", key, value, err)
 		}

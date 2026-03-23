@@ -1,23 +1,5 @@
 A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams. The application uses Redpanda to separate the producer, which pulls from the stream, and the consumer, which pushes to the database.
 
-## Chapter 5 & 6 Updates
-
-### Splitting the application
-
-The application is split from a single Go application into four services. A producer, which reads messages from the Wikimedia stream and publishes them to Redpanda, a consumer, which pulls messages from Redpanda and updates the database with the statistics, a database, which manages the underlying database implementation and provides an API to access it, and a server, which provides the public API to view the stats collected by the application.
-
-### Communication
-
-Protobufs are used to communicate between the producer and Redpanda, the consumer and Redpanda, the consumer and the database, and the server and the database. Redpanda and the database each host an RPC server, with the database using gRPC.
-
-### Redpanda settings
-
-By default, the application runs Redpanda with three brokers and a replication factor of 3. This ensures availability of the service, and with 6 partitions for the topic the brokers can benefit from multiple consumers. Data is retained in Redpanda for a day, as the application is not intended to run for long periods.
-
-### Security
-
-Some hardening has been done for the services, such as using an external network connection only for services that require it, restricting privileges on volumes, using non-root users, and blocking privilege escalation. However, in a production system you would want to configure logins for ScyllaDB and for Redpanda. This is omitted here for the sake of making the application easier for others to run, without having to share secrets.
-
 ## Running
 
 ### 1. Docker compose (with in-memory database):
@@ -40,7 +22,7 @@ The application has both unit tests and integration tests, with several options 
 
 ### 1. Run all tests on Docker
 
-To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests.
+To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests. It also runs a simple end-to-end test which validates the entire stack, including the metrics from Prometheus.
 
 Start the test system with ```docker compose -f deployment/docker-compose-test.yml up -d```
 
@@ -78,6 +60,10 @@ The login endpoint will return a string upon successful login - copy this as the
 ```http://localhost:7000/stats``` requires the inclusion of the bearer token to view the statistics collected by the application.
 
 ```http://localhost:7000/logout``` can also be hit to revoke the bearer token the request is sent with.
+
+```http://localhost:8080``` can be visited to view the Redpanda console.
+
+```http://localhost:3000``` can be visited to view the Grafana dashboard. The user/password is admin/admin.
 
 ## Workflows
 

@@ -189,7 +189,7 @@ services:
       CONFIG_FILEPATH: "/etc/redpanda/redpanda-console.yml"
     volumes:
       - ../api/proto/models.proto:/etc/protos/models/models.proto:ro
-      - ./redpanda-console.yml:/etc/redpanda/redpanda-console.yml:ro
+      - ./config/redpanda-console.yml:/etc/redpanda/redpanda-console.yml:ro
     networks:
       - external-network
       - monitoring
@@ -202,7 +202,7 @@ services:
     image: prom/prometheus:v3.10.0
     hostname: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - internal-network
       - monitoring
@@ -215,9 +215,9 @@ services:
   grafana:
     image: grafana/grafana:12.4.1
     volumes:
-      - ./grafana.yml:/etc/grafana/provisioning/datasources/datasource.yaml
-      - ./grafana_provider.yml:/etc/grafana/provisioning/dashboards/provider.yaml
-      - ./grafana_dashboard.json:/var/lib/grafana/dashboards/wikistats.json
+      - ./config/grafana.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./config/grafana_provider.yml:/etc/grafana/provisioning/dashboards/provider.yaml
+      - ./config/grafana_dashboard.json:/var/lib/grafana/dashboards/wikistats.json
       - grafana-data:/var/lib/grafana:rw
     ports:
       - "3000:3000"

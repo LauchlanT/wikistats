@@ -107,6 +107,92 @@ services:
       - redpanda-data1:/var/lib/redpanda/data:rw
     networks:
       - test-network
+  
+  wikistats-database:
+    build:
+      context: ..
+      dockerfile: build/database.Dockerfile
+    container_name: wikistats-database
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: database
+    read_only: true
+    restart: on-failure
+    networks:
+      - test-network
+    env_file:
+      - ../.test_env
+  
+  wikistats-api:
+    build:
+      context: ..
+      dockerfile: build/api.Dockerfile
+    container_name: wikistats-api
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: api
+    read_only: true
+    restart: on-failure
+    networks:
+      - test-network
+    depends_on:
+      wikistats-database:
+        condition: service_started
+    env_file:
+      - ../.test_env
+
+  wikistats-producer:
+    build:
+      context: ..
+      dockerfile: build/producer.Dockerfile
+    container_name: wikistats-producer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: producer
+    read_only: true
+    restart: on-failure
+    networks:
+      - test-network
+    depends_on:
+      redpanda-node1:
+        condition: service_healthy
+    env_file:
+      - ../.test_env
+  
+  wikistats-consumer:
+    build:
+      context: ..
+      dockerfile: build/consumer.Dockerfile
+    container_name: wikistats-consumer
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"
+    hostname: consumer
+    read_only: true
+    restart: on-failure
+    networks:
+      - test-network
+    depends_on:
+      wikistats-database:
+        condition: service_started
+      redpanda-node1:
+        condition: service_healthy
+    env_file:
+      - ../.test_env
+  
+  e2e-tester:
+    build:
+      context: ..
+      dockerfile: e2e-testing/Dockerfile
+    container_name: e2e-tester
+    hostname: e2e-tester
+    networks:
+      - test-network
+    env_file:
+      - ../.test_env
 
   test-runner:
     image: golang:1.25-alpine 
@@ -121,13 +207,15 @@ services:
         condition: service_healthy
       redpanda-node1:
         condition: service_healthy
-    command: >
+      e2e-tester:
+        condition: service_started
+    command: |
       sh -c '
         set -e
         
         echo "=== Dependencies ==="
         apk update
-        apk add build-base
+        apk add build-base curl
         go mod download
         
         UNIT_FAILED=""
@@ -162,11 +250,19 @@ services:
         echo "========================================"
         
         if [ -n "$$UNIT_FAILED" ] || [ -n "$$INT_FAILED" ]; then
-          echo "SOME TESTS FAILED"
+          echo "SOME TESTS FAILED - SKIPPING E2E TESTS"
           exit 1
-        else
+        fi
+
+        echo "=== Running E2E Test ==="
+        E2E_RESPONSE=$$(curl -s "http://e2e-tester:7555/run-test?file=test.txt")
+        echo "E2E Result: $$E2E_RESPONSE"
+        if echo "$$E2E_RESPONSE" | grep -q "success"; then
           echo "ALL TESTS PASSED"
           exit 0
+        else
+          echo "E2E TEST FAILED"
+          exit 1
         fi
       '
 
