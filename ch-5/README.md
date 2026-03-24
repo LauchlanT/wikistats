@@ -1,30 +1,38 @@
-A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams.
+A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams. The application uses Redpanda to separate the producer, which pulls from the stream, and the consumer, which pushes to the database.
+
+## Chapter 5 & 6 Updates
+
+### Splitting the application
+
+The application is split from a single Go application into four services. A producer, which reads messages from the Wikimedia stream and publishes them to Redpanda, a consumer, which pulls messages from Redpanda and updates the database with the statistics, a database, which manages the underlying database implementation and provides an API to access it, and a server, which provides the public API to view the stats collected by the application.
+
+### Communication
+
+Protobufs are used to communicate between the producer and Redpanda, the consumer and Redpanda, the consumer and the database, and the server and the database. Redpanda and the database each host an RPC server, with the database using gRPC.
+
+### Redpanda settings
+
+By default, the application runs Redpanda with three brokers and a replication factor of 3. This ensures availability of the service, and with 6 partitions for the topic the brokers can benefit from multiple consumers. Data is retained in Redpanda for a day, as the application is not intended to run for long periods.
+
+### Security
+
+Some hardening has been done for the services, such as using an external network connection only for services that require it, restricting privileges on volumes, using non-root users, and blocking privilege escalation. However, in a production system you would want to configure logins for ScyllaDB and for Redpanda. This is omitted here for the sake of making the application easier for others to run, without having to share secrets.
 
 ## Running
 
-There are now multiple ways to run the application
+### 1. Docker compose (with in-memory database):
 
-### 1. Dockerfile (with in-memory database): 
+Start the application with ```docker compose -f deployment/docker-compose.yml up --build -d```
 
-Build the Docker image with ```docker build -t wikistats:latest .```
+Stop the application with ```docker compose -f deployment/docker-compose.yml down -v```
 
-Run the container with ```docker run -d --rm -p 7000:7000 --name wikistats wikistats:latest``` (or change the port number if you've changed the .env API_PORT value)
-
-Stop the container with ```docker stop wikistats```
-
-### 2. Docker compose (with in-memory database):
-
-Start the application with ```docker compose up wikistats --build -d```
-
-Stop the application with ```docker compose down wikistats -v```
-
-### 3. Docker compose (with ScyllaDB database):
+### 2. Docker compose (with ScyllaDB database):
 
 Edit the .env file and add ```DATABASE_TYPE=scylla```
 
-Start the application and a 3 node ScyllaDB cluster with ```docker compose --profile scylla up --build -d```
+Start the application and a 3 node ScyllaDB cluster with ```docker compose -f deployment/docker-compose.yml --profile scylla up --build -d```
 
-Stop the application with ```docker compose --profile scylla down``` (or ```docker compose --profile scylla down -v``` to clear the database)
+Stop the application with ```docker compose -f deployment/docker-compose.yml --profile scylla down``` (or ```docker compose -f deployment/docker-compose.yml --profile scylla down -v``` to clear the database)
 
 ## Testing
 
@@ -34,19 +42,19 @@ The application has both unit tests and integration tests, with several options 
 
 To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests.
 
-Start the test system with ```docker compose -f docker-compose-test.yml up -d```
+Start the test system with ```docker compose -f deployment/docker-compose-test.yml up -d```
 
-Once all services have started, monitor the logs with ```docker compose -f docker-compose-test.yml logs -f test-runner```
+Once all services have started, monitor the logs with ```docker compose -f deployment/docker-compose-test.yml logs -f test-runner```
 
-After all tests have completed, shut down the test system with ```docker compose -f docker-compose-test.yml down -v```
+After all tests have completed, shut down the test system with ```docker compose -f deployment/docker-compose-test.yml down -v```
 
 ### 2. Run unit tests locally
 
-Unit tests don't require spinning up the ScyllaDB cluster and can be run with ```go test -v -tags=unit ./...```
+Unit tests don't require spinning up the ScyllaDB cluster or Redpanda and can be run with ```go test -v -tags=unit ./...```
 
 ### 3. Run integration tests locally
 
-Integration tests can be run against a running ScyllaDB cluster, but you must first edit .test-env to set ```SCYLLA_HOSTS=localhost```, and the Scylla cluster from docker-compose-test.yml must be running.
+Integration tests can be run against a running ScyllaDB cluster, but you must first edit .test-env to set ```SCYLLA_HOSTS=localhost```, and the Scylla cluster and Redpanda node from docker-compose-test.yml must be running.
 
 Then you can run ```go test -v -tags=integration ./...```
 
