@@ -22,7 +22,7 @@ The application has both unit tests and integration tests, with several options 
 
 ### 1. Run all tests on Docker
 
-To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests. It also runs a simple end-to-end test which validates the entire stack, including the metrics from Prometheus.
+To run tests as comprehensively as possible, there is a docker-compose-test.yml file that sets up a testing environment and runs both unit and integration tests. It also runs a simple end-to-end test which validates the entire stack, including the metrics from Prometheus. Note that the services are configured to use .test_env for their environment, and settings can be adjusted as desired with that file.
 
 Start the test system with ```docker compose -f deployment/docker-compose-test.yml up -d```
 
