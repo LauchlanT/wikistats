@@ -19,3 +19,11 @@ Add a Github Actions workflow which triggers on pushes to main. It validates the
 ch-5:
 
 Split the application into a producer that reads from the Wikimedia stream and pushes messages to Redpanda, a consumer that reads from Redpanda and stores stats in the database, and an API server that makes the stats in the database available to an API.
+
+ch-6:
+
+Update the application to use Protobufs for communicating with Redpanda. (Was done in ch-5 as Protobufs were already being used to communicate with the database.)
+
+ch-7:
+
+Add Prometheus and Grafana for tracking metrics.
