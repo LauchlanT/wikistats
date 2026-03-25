@@ -19,6 +19,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -82,18 +83,32 @@ func run() error {
 		err = errors.Join(err, db.Close())
 	}(db)
 
-	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
-	if err != nil {
-		return fmt.Errorf("initializing consumer: %w", err)
-	}
-
-	if err := streamConsumer.Consume(ctx, db, rp); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil
-		}
-		return fmt.Errorf("consuming stream: %w", err)
+	if err := runConsumers(cfg.Consumer, ctx, db, &consumer.RPClientWrapper{Client: rp}); err != nil {
+		return err
 	}
 
 	log.Println("Application terminated gracefully")
+	return nil
+}
+
+func runConsumers(cfg config.ConsumerConfig, ctx context.Context, db database.Repository, rp consumer.RPClient) error {
+	g, gctx := errgroup.WithContext(ctx)
+	for range cfg.ConsumerCount {
+		g.Go(func() error {
+			streamConsumer, err := consumer.NewWikimediaConsumer(cfg)
+			if err != nil {
+				return fmt.Errorf("initializing consumer: %w", err)
+			}
+			if err := streamConsumer.Consume(gctx, db, rp); err != nil {
+				if !errors.Is(err, context.Canceled) {
+					return fmt.Errorf("consuming stream: %w", err)
+				}
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("consuming: %w", err)
+	}
 	return nil
 }

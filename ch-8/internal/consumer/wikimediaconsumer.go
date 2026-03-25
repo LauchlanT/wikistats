@@ -48,7 +48,7 @@ func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error)
 	}, nil
 }
 
-func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp *kgo.Client) error {
+func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp RPClient) error {
 	var wg sync.WaitGroup
 	for i := 0; i < c.consumerCount; i++ {
 		wg.Go(func() {
@@ -63,24 +63,23 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository,
 					}
 					continue
 				}
-				fetches.EachRecord(func(record *kgo.Record) {
-					processed := true
-					if err := c.processRecord(ctx, db, record); err != nil {
-						log.Printf("Processing error: %v", err)
-						processed = false
+				records := fetches.Records()
+				stored, err := c.processRecords(ctx, db, records...)
+				if err != nil {
+					log.Printf("Processing error: %v", err)
+				}
+				for i, record := range records {
+					if i >= stored {
+						metricEventsFailed.Inc()
+						continue
 					}
 					if err := rp.CommitRecords(ctx, record); err != nil {
 						log.Printf("Error committing record: %v", err)
 					} else {
-						// Increment metrics only on successful commits to avoid doublecounting
 						metricEventsConsumed.Inc()
-						if processed {
-							metricEventsProcessed.Inc()
-						} else {
-							metricEventsFailed.Inc()
-						}
+						metricEventsProcessed.Inc()
 					}
-				})
+				}
 			}
 		})
 	}
@@ -88,23 +87,25 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository,
 	return ctx.Err()
 }
 
-func (c *WikimediaConsumer) processRecord(ctx context.Context, db database.Repository, record *kgo.Record) error {
-	var exported models.Exported
-	if err := proto.Unmarshal(record.Value, &exported); err != nil {
-		return fmt.Errorf("unmarshal failed: %w", err)
+func (c *WikimediaConsumer) processRecords(ctx context.Context, db database.Repository, records ...*kgo.Record) (int, error) {
+	exported := make([]models.Exported, len(records))
+	request := make([]database.StatsUpdate, len(records))
+	for i, record := range records {
+		if err := proto.Unmarshal(record.Value, &exported[i]); err != nil {
+			return 0, fmt.Errorf("unmarshal failed: %w", err)
+		}
+		request[i].Id = exported[i].Id
+		request[i].User = exported[i].User
+		request[i].Server = exported[i].Server
+		request[i].IsBot = exported[i].IsBot
 	}
 
 	dbCtx, cancel := context.WithTimeout(ctx, c.dbTimeout)
 	defer cancel()
 
-	err := db.UpdateDatabase(dbCtx, database.StatsUpdate{
-		Id:     exported.Id,
-		User:   exported.User,
-		Server: exported.Server,
-		IsBot:  exported.IsBot,
-	})
+	stored, err := db.UpdateDatabase(dbCtx, request...)
 	if err != nil {
-		return fmt.Errorf("database update failed: %w", err)
+		return stored, fmt.Errorf("database update failed: %w", err)
 	}
-	return nil
+	return stored, nil
 }

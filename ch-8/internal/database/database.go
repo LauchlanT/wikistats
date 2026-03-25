@@ -21,7 +21,7 @@ type Stats struct {
 }
 
 type Repository interface {
-	UpdateDatabase(ctx context.Context, s StatsUpdate) error
+	UpdateDatabase(ctx context.Context, s ...StatsUpdate) (int, error)
 	MigrateDatabase(ctx context.Context) error
 	AddUser(ctx context.Context, username string, password string) error
 	GetStats(ctx context.Context) (*Stats, error)

@@ -54,26 +54,29 @@ func assertStats(t *testing.T, db Repository, want Stats) {
 
 func TestUpdateDatabase(t *testing.T) {
 	tests := []struct {
-		name    string
-		updates []StatsUpdate
-		want    Stats
-		wantErr bool
+		name       string
+		updates    []StatsUpdate
+		want       Stats
+		wantStored int
+		wantErr    bool
 	}{
 		{
 			name: "Single user",
 			updates: []StatsUpdate{
 				{Id: "msg1", User: "alice", Server: "server1", IsBot: false},
 			},
-			want:    Stats{Messages: 1, Users: 1, Bots: 0, Servers: 1},
-			wantErr: false,
+			wantStored: 1,
+			want:       Stats{Messages: 1, Users: 1, Bots: 0, Servers: 1},
+			wantErr:    false,
 		},
 		{
 			name: "Single bot",
 			updates: []StatsUpdate{
 				{Id: "msg1", User: "bob", Server: "server1", IsBot: true},
 			},
-			want:    Stats{Messages: 1, Users: 0, Bots: 1, Servers: 1},
-			wantErr: false,
+			wantStored: 1,
+			want:       Stats{Messages: 1, Users: 0, Bots: 1, Servers: 1},
+			wantErr:    false,
 		},
 		{
 			name: "Duplicate users, bots, and servers",
@@ -85,8 +88,9 @@ func TestUpdateDatabase(t *testing.T) {
 				{Id: "msg5", User: "bob", Server: "server2", IsBot: true},
 				{Id: "msg6", User: "bob", Server: "server3", IsBot: true},
 			},
-			want:    Stats{Messages: 6, Users: 1, Bots: 1, Servers: 3},
-			wantErr: false,
+			wantStored: 6,
+			want:       Stats{Messages: 6, Users: 1, Bots: 1, Servers: 3},
+			wantErr:    false,
 		},
 		{
 			name: "Distinct users, bots, and servers",
@@ -98,24 +102,27 @@ func TestUpdateDatabase(t *testing.T) {
 				{Id: "msg5", User: "elaine", Server: "server8", IsBot: false},
 				{Id: "msg6", User: "frank", Server: "server13", IsBot: false},
 			},
-			want:    Stats{Messages: 6, Users: 5, Bots: 1, Servers: 6},
-			wantErr: false,
+			wantStored: 6,
+			want:       Stats{Messages: 6, Users: 5, Bots: 1, Servers: 6},
+			wantErr:    false,
 		},
 		{
 			name: "Zero values",
 			updates: []StatsUpdate{
 				{},
 			},
-			want:    Stats{Messages: 0, Users: 0, Bots: 0, Servers: 0},
-			wantErr: true,
+			wantStored: 0,
+			want:       Stats{Messages: 0, Users: 0, Bots: 0, Servers: 0},
+			wantErr:    true,
 		},
 		{
 			name: "Partial zero values",
 			updates: []StatsUpdate{
 				{Server: "server1"},
 			},
-			want:    Stats{Messages: 0, Users: 0, Bots: 0, Servers: 0},
-			wantErr: true,
+			wantStored: 0,
+			want:       Stats{Messages: 0, Users: 0, Bots: 0, Servers: 0},
+			wantErr:    true,
 		},
 	}
 	for _, implementation := range dbImplementations {
@@ -124,10 +131,12 @@ func TestUpdateDatabase(t *testing.T) {
 				t.Run(tt.name, func(t *testing.T) {
 					db, cleanup := implementation.factory(t)
 					defer cleanup()
-					for _, op := range tt.updates {
-						if err := db.UpdateDatabase(t.Context(), StatsUpdate{op.Id, op.User, op.Server, op.IsBot}); (err != nil) != tt.wantErr {
-							t.Fatalf("Error updating database: %v", err)
-						}
+					stored, err := db.UpdateDatabase(t.Context(), tt.updates...)
+					if (err != nil) != tt.wantErr {
+						t.Fatalf("Error updating database: %v", err)
+					}
+					if stored != tt.wantStored {
+						t.Fatalf("Incorrect number of records stored: want %d got %d", tt.wantStored, stored)
 					}
 					assertStats(t, db, tt.want)
 				})
@@ -164,7 +173,8 @@ func TestGetStats(t *testing.T) {
 					db, cleanup := implementation.factory(t)
 					defer cleanup()
 					for _, op := range tt.updates {
-						if err := db.UpdateDatabase(t.Context(), StatsUpdate{op.Id, op.User, op.Server, op.IsBot}); err != nil {
+						_, err := db.UpdateDatabase(t.Context(), StatsUpdate{op.Id, op.User, op.Server, op.IsBot})
+						if err != nil {
 							t.Fatalf("Error updating database: %v", err)
 						}
 					}
@@ -265,8 +275,12 @@ func TestConcurrentExecution(t *testing.T) {
 								id := fmt.Sprintf("message-%d-%d", routine, j)
 								user := fmt.Sprintf("user-%d-%d", routine, j)
 								server := fmt.Sprintf("server-%d-%d", routine, j)
-								if err := db.UpdateDatabase(t.Context(), StatsUpdate{id, user, server, false}); err != nil {
+								stored, err := db.UpdateDatabase(t.Context(), StatsUpdate{id, user, server, false})
+								if err != nil {
 									t.Logf("Error updating database: %v", err)
+								}
+								if stored != 1 {
+									t.Logf("Incorrect number of records stored: want %d got %d", 1, stored)
 								}
 							}
 						}(i)

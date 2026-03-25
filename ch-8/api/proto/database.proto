@@ -12,11 +12,11 @@ message StatsUpdateMsg {
 }
 
 message UpdateDatabaseRequest {
-    StatsUpdateMsg stats_update = 1;
+    repeated StatsUpdateMsg stats_update = 1;
 }
 
 message UpdateDatabaseResponse {
-    bool success = 1;
+    int32 count = 1;
 }
 
 message GetStatsRequest {}
