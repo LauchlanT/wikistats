@@ -67,6 +67,10 @@ func (c *MockClient) CommitRecords(ctx context.Context, r ...*kgo.Record) error 
 	return nil
 }
 
+func (c *MockClient) ProduceSync(ctx context.Context, r ...*kgo.Record) kgo.ProduceResults {
+	return nil
+}
+
 func createRecord(id, user, server string, isBot bool) *kgo.Record {
 	exported := &models.Exported{
 		Id:     id,

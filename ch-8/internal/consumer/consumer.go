@@ -10,6 +10,7 @@ import (
 type RPClient interface {
 	PollFetches(context.Context) Fetcher
 	CommitRecords(context.Context, ...*kgo.Record) error
+	ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults
 }
 
 type Fetcher interface {
@@ -26,8 +27,12 @@ func (w *RPClientWrapper) PollFetches(ctx context.Context) Fetcher {
 	return w.Client.PollFetches(ctx)
 }
 
-func (w *RPClientWrapper) CommitRecords(ctx context.Context, errs ...*kgo.Record) error {
-	return w.Client.CommitRecords(ctx, errs...)
+func (w *RPClientWrapper) CommitRecords(ctx context.Context, records ...*kgo.Record) error {
+	return w.Client.CommitRecords(ctx, records...)
+}
+
+func (w *RPClientWrapper) ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults {
+	return w.Client.ProduceSync(ctx, records...)
 }
 
 type Consumer interface {

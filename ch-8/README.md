@@ -1,5 +1,25 @@
 A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams. The application uses Redpanda to separate the producer, which pulls from the stream, and the consumer, which pushes to the database.
 
+## Chapter 8 notes
+
+### Threading
+
+The consumer is now multi-threaded with the application spawning multiple consumer instances. To validate that there are no race conditions, an additional test has been added in cmd/consumer, which spawns multiple consumers and has them read 10000 messages, and validates that all messages are consumed and the final stats generated are correct.
+
+Note that the consumer had previously been internally multi-threaded, spawning multiple consumers to process messages from each batch of messages pulled from Redpanda. However, now that the application batches database writes, internal multi-threading like this would introduce a risk of skipping messages if processing failed on a message mid-batch and then another thread increments the partition offset, causing the rest of the batch to never be processed. Now that the consumer is internally single-threaded it will not commit passed the failed message, and a dead letter queue has been created so if a message cannot be processed it will be sent to the DLQ and the consumer can continue to pull new messages from its partition.
+
+### Batching
+
+For the in-memory database batching is very straightforward, we just hold the lock on the database until all records from the batch have been inserted. Since there's no possibility of an insert failing, there are no concerns about failures mid-batch.
+
+For ScyllaDB batching is a serious challenge. The light weight transactions (LWTs) needed to ensure that duplicate values aren't inserted into the database do not really support batching - if a batch is inserted and any record is fails to insert because of an existing record, the entire batch is rejected. Therefore for ScyllaDB there needs to be an iterative fall-back that inserts records one by one if the batch insert fails. However, this does mean that there are more potential failure cases. Here are some potential risk:
+
+1. If the batch is insert successfully, we still need to go and increment the counts for each statistic, unfortunately this cannot be included with the batch. Therefore there is a chance that the batch inserts all the values successfully, but one or more increments fail, and therefore the counts do not accurately reflect the state of the database. There is no way to roll-back the insert as it's possible that other processes may have inserted the same value, so deleting it may not fix the issue. Therefore we just log the failed increment, and in the future the database could perhaps have a process run to correct the counts. If correctness is critical at all times, batching cannot be used without serious efficiency loss and should be reverted.
+
+2. If the batch does not insert, we insert each record individually. If any of these records fail, the process will exit early and return the number of records correctly stored. Again, during this process the increment cannot happen alongside the insert, so there is the possibility of an increment failing after a successful insert - it is less bad since it's just one record but it is still an issue. If this level of incorrectness is not acceptable, do not use ScyllaDB for this kind of thing. Otherwise, again the solution will be to run a clean-up process on the database periodically if these errors occur.
+
+3. If the batch is only partially inserted, the consumer recognizes that only some records have been processed and only commits the records which have been stored to the database. The next record in the batch is sent to the DLQ so it does not block further processing of messages in the partition. This could cause issues if the database is down and processing fails because of this - then all messages could be sent to the DLQ. However, ScyllaDB is designed to be highly available, so this is an acceptable risk in this application.
+
 ## Running
 
 ### 1. Docker compose (with in-memory database):

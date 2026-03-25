@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
@@ -38,6 +37,8 @@ type WikimediaConsumer struct {
 	rpTimeout     time.Duration
 	dbTimeout     time.Duration
 	consumerCount int
+	retryLimit    int
+	retryDelay    time.Duration
 }
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
@@ -45,46 +46,64 @@ func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error)
 		rpTimeout:     cfg.RPTimeout,
 		dbTimeout:     cfg.DBTimeout,
 		consumerCount: cfg.ConsumerThreadCount,
+		retryLimit:    cfg.RetryLimit,
+		retryDelay:    cfg.RetryDelay,
 	}, nil
 }
 
 func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository, rp RPClient) error {
-	var wg sync.WaitGroup
-	for i := 0; i < c.consumerCount; i++ {
-		wg.Go(func() {
-			for {
-				fetches := rp.PollFetches(ctx)
-				if ctx.Err() != nil {
-					return
-				}
-				if errs := fetches.Errors(); len(errs) > 0 {
-					for _, e := range errs {
-						log.Printf("Fetch error: topic=%s, partition=%d, err=%v", e.Topic, e.Partition, e.Err)
-					}
-					continue
-				}
-				records := fetches.Records()
-				stored, err := c.processRecords(ctx, db, records...)
-				if err != nil {
-					log.Printf("Processing error: %v", err)
-				}
-				for i, record := range records {
-					if i >= stored {
-						metricEventsFailed.Inc()
-						continue
-					}
-					if err := rp.CommitRecords(ctx, record); err != nil {
-						log.Printf("Error committing record: %v", err)
-					} else {
-						metricEventsConsumed.Inc()
-						metricEventsProcessed.Inc()
-					}
-				}
+	for {
+		fetches := rp.PollFetches(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errs := fetches.Errors(); len(errs) > 0 {
+			for _, e := range errs {
+				log.Printf("Fetch error: topic=%s, partition=%d, err=%v", e.Topic, e.Partition, e.Err)
 			}
-		})
+			continue
+		}
+		records := fetches.Records()
+		var stored int
+		var err error
+		retryDelay := c.retryDelay
+		for retry := 0; retry < c.retryLimit; retry++ {
+			stored, err = c.processRecords(ctx, db, records...)
+			if stored == len(records) && err == nil {
+				break
+			}
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+		}
+		if err != nil {
+			return fmt.Errorf("processing records: %w", err)
+		}
+		for i, record := range records {
+			if i >= stored {
+				break
+			}
+			if err := rp.CommitRecords(ctx, record); err != nil {
+				log.Printf("Error committing record: %v", err)
+				// Don't continue committing if there's an error
+				// Break and leave offset at the failed commit
+				// The message will re-process next time it's polled
+				break
+			} else {
+				metricEventsConsumed.Inc()
+				metricEventsProcessed.Inc()
+			}
+		}
+		// An event failed to process even after retries
+		// Log the failure and send to DLQ
+		if stored < len(records) {
+			metricEventsFailed.Inc()
+			if err := c.sendToDLQ(ctx, records[stored], rp); err != nil {
+				log.Printf("Error sending message to DLQ: %v", err)
+			} else if err := rp.CommitRecords(ctx, records[stored]); err != nil {
+				log.Printf("Error committing record meant for DLQ: %v", err)
+			}
+		}
 	}
-	wg.Wait()
-	return ctx.Err()
 }
 
 func (c *WikimediaConsumer) processRecords(ctx context.Context, db database.Repository, records ...*kgo.Record) (int, error) {
@@ -108,4 +127,23 @@ func (c *WikimediaConsumer) processRecords(ctx context.Context, db database.Repo
 		return stored, fmt.Errorf("database update failed: %w", err)
 	}
 	return stored, nil
+}
+
+func (c *WikimediaConsumer) sendToDLQ(ctx context.Context, record *kgo.Record, rp RPClient) error {
+	dlqRecord := &kgo.Record{
+		Topic: "wikimedia.dlq",
+		Value: record.Value,
+		Key:   record.Key,
+	}
+	dlqRecord.Headers = append(dlqRecord.Headers,
+		kgo.RecordHeader{Key: "x-orig-topic", Value: []byte(record.Topic)},
+		kgo.RecordHeader{Key: "x-orig-partition", Value: []byte(fmt.Sprint(record.Partition))},
+		kgo.RecordHeader{Key: "x-orig-offset", Value: []byte(fmt.Sprint(record.Offset))},
+		kgo.RecordHeader{Key: "x-error", Value: []byte("Processing failure")},
+	)
+	results := rp.ProduceSync(ctx, dlqRecord)
+	if err := results.FirstErr(); err != nil {
+		return fmt.Errorf("failed to send to DLQ: %w", err)
+	}
+	return nil
 }

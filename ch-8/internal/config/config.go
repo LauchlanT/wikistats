@@ -52,6 +52,8 @@ type ConsumerConfig struct {
 	ConsumerThreadCount int
 	RPTimeout           time.Duration
 	DBTimeout           time.Duration
+	RetryLimit          int
+	RetryDelay          time.Duration
 }
 
 type ProducerConfig struct {
@@ -60,6 +62,7 @@ type ProducerConfig struct {
 	UserAgent         string
 	RedpandaHost      string
 	RedpandaTopic     string
+	DLQTopic          string
 	TopicPartitions   int32
 	TopicReplication  int16
 	TopicRetention    string
@@ -98,6 +101,8 @@ func LoadFromEnv() (*Config, error) {
 			ConsumerThreadCount: parseIntOrDefault("CONSUMER_THREAD_COUNT", 4),
 			RPTimeout:           parseDurationOrDefault("REDPANDA_TIMEOUT", 2*time.Second),
 			DBTimeout:           parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
+			RetryLimit:          parseIntOrDefault("CONSUMER_RETRY_LIMIT", 5),
+			RetryDelay:          parseDurationOrDefault("CONSUMER_RETRY_DELAY", 100*time.Millisecond),
 		},
 		Producer: ProducerConfig{
 			StreamURL:         getEnvOrDefault("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
@@ -105,6 +110,7 @@ func LoadFromEnv() (*Config, error) {
 			UserAgent:         getEnvOrDefault("STREAM_USER_AGENT", "REDspace workshop (lauchlan.toal@redspace.com)"),
 			RedpandaHost:      getEnvOrDefault("REDPANDA_HOST", "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"),
 			RedpandaTopic:     getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
+			DLQTopic:          getEnvOrDefault("REDPANDA_DLQ_TOPIC", "wikistats.dlq"),
 			TopicPartitions:   int32(parseIntOrDefault("REDPANDA_PARTITIONS", 6)),
 			TopicReplication:  int16(parseIntOrDefault("REDPANDA_REPLICATION", 3)),
 			TopicRetention:    getEnvOrDefault("REDPANDA_RETENTION", "86400"),

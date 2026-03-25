@@ -50,6 +50,7 @@ func configureTopic(ctx context.Context, cfg *config.Config) error {
 			"retention.ms": &cfg.Producer.TopicRetention,
 		},
 		cfg.Producer.RedpandaTopic,
+		cfg.Producer.DLQTopic,
 	)
 	if err != nil {
 		return err
