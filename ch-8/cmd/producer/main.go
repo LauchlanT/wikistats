@@ -99,7 +99,9 @@ func run() error {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelShutdown()
 		log.Println("Shutting down metrics server...")
-		promServer.Shutdown(shutdownCtx)
+		if err := promServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down metrics server: %v", err)
+		}
 	}()
 
 	if err := configureTopic(ctx, cfg); err != nil {
