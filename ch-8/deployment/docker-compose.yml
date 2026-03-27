@@ -1,3 +1,20 @@
+x-consumer-base: &consumer-base
+  build:
+    context: ..
+    dockerfile: build/consumer.Dockerfile
+  security_opt:
+    - no-new-privileges:true
+  user: "1000:1000"
+  read_only: true
+  restart: on-failure
+  networks:
+    - internal-network
+  depends_on:
+    wikistats-database:
+      condition: service_started
+    redpanda-node3:
+      condition: service_healthy
+
 services:
   scylla-node1:
     image: scylladb/scylla:2025.3
@@ -278,23 +295,7 @@ services:
         condition: service_healthy
   
   wikistats-consumer:
-    build:
-      context: ..
-      dockerfile: build/consumer.Dockerfile
-    container_name: wikistats-consumer
-    security_opt:
-      - no-new-privileges:true
-    user: "1000:1000"
-    hostname: consumer
-    read_only: true
-    restart: on-failure
-    networks:
-      - internal-network
-    depends_on:
-      wikistats-database:
-        condition: service_started
-      redpanda-node3:
-        condition: service_healthy
+    <<: *consumer-base
 
 networks:
   external-network:

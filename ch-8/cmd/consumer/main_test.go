@@ -15,6 +15,7 @@ import (
 	"wikistats/internal/models"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -105,9 +106,15 @@ func TestConsumers_Race(t *testing.T) {
 	}
 
 	cfg.Consumer.ConsumerCount = 10
-	err = runConsumers(cfg.Consumer, ctx, db, rp)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	g, gctx := errgroup.WithContext(ctx)
+	for range cfg.Consumer.ConsumerCount {
+		g.Go(func() error {
+			return runConsumer(cfg.Consumer, gctx, db, rp)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		t.Fatalf("unexpected error consuming: %v", err)
 	}
 
 	stats, err := db.GetStats(context.Background())

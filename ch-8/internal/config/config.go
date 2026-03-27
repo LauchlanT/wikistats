@@ -45,15 +45,14 @@ type APIConfig struct {
 }
 
 type ConsumerConfig struct {
-	RedpandaHost        string
-	RedpandaTopic       string
-	RedpandaGroup       string
-	ConsumerCount       int
-	ConsumerThreadCount int
-	RPTimeout           time.Duration
-	DBTimeout           time.Duration
-	RetryLimit          int
-	RetryDelay          time.Duration
+	RedpandaHost  string
+	RedpandaTopic string
+	RedpandaGroup string
+	ConsumerCount int
+	RPTimeout     time.Duration
+	DBTimeout     time.Duration
+	RetryLimit    int
+	RetryDelay    time.Duration
 }
 
 type ProducerConfig struct {
@@ -94,15 +93,14 @@ func LoadFromEnv() (*Config, error) {
 			WorkerTimeout: parseDurationOrDefault("API_WORKER_TIMEOUT", 5*time.Second),
 		},
 		Consumer: ConsumerConfig{
-			RedpandaHost:        getEnvOrDefault("REDPANDA_HOST", "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"),
-			RedpandaTopic:       getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
-			RedpandaGroup:       getEnvOrDefault("REDPANDA_GROUP", "wikistats-consumers"),
-			ConsumerCount:       parseIntOrDefault("CONSUMER_COUNT", 4),
-			ConsumerThreadCount: parseIntOrDefault("CONSUMER_THREAD_COUNT", 4),
-			RPTimeout:           parseDurationOrDefault("REDPANDA_TIMEOUT", 2*time.Second),
-			DBTimeout:           parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
-			RetryLimit:          parseIntOrDefault("CONSUMER_RETRY_LIMIT", 5),
-			RetryDelay:          parseDurationOrDefault("CONSUMER_RETRY_DELAY", 100*time.Millisecond),
+			RedpandaHost:  getEnvOrDefault("REDPANDA_HOST", "redpanda-node1:9092,redpanda-node2:9092,redpanda-node3:9092"),
+			RedpandaTopic: getEnvOrDefault("REDPANDA_TOPIC", "wikistats.messages"),
+			RedpandaGroup: getEnvOrDefault("REDPANDA_GROUP", "wikistats-consumers"),
+			ConsumerCount: parseIntOrDefault("CONSUMER_COUNT", 6),
+			RPTimeout:     parseDurationOrDefault("REDPANDA_TIMEOUT", 2*time.Second),
+			DBTimeout:     parseDurationOrDefault("STREAM_DATABASE_TIMEOUT", 2*time.Second),
+			RetryLimit:    parseIntOrDefault("CONSUMER_RETRY_LIMIT", 5),
+			RetryDelay:    parseDurationOrDefault("CONSUMER_RETRY_DELAY", 100*time.Millisecond),
 		},
 		Producer: ProducerConfig{
 			StreamURL:         getEnvOrDefault("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),

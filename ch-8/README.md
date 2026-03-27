@@ -4,9 +4,7 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 ### Threading
 
-The consumer is now multi-threaded with the application spawning multiple consumer instances. To validate that there are no race conditions, an additional test has been added in cmd/consumer, which spawns multiple consumers and has them read 10000 messages, and validates that all messages are consumed and the final stats generated are correct.
-
-Note that the consumer had previously been internally multi-threaded, spawning multiple consumers to process messages from each batch of messages pulled from Redpanda. However, now that the application batches database writes, internal multi-threading like this would introduce a risk of skipping messages if processing failed on a message mid-batch and then another thread increments the partition offset, causing the rest of the batch to never be processed. Now that the consumer is internally single-threaded it will not commit passed the failed message, and a dead letter queue has been created so if a message cannot be processed it will be sent to the DLQ and the consumer can continue to pull new messages from its partition.
+While the consumer had been multi-threaded previously, spawning multiple Goroutines which process messages pulled from Redpanda,this is no longer the case. The requirement to batch writes to the database makes multi-threading dangerous. It creates a risk of threads committing batches that increment the partition offset, meanwhile earlier messages in the partition fail processing and then never get re-processed because the offset is past them. For this application a safer and more idiomatic approach is taken, limiting the consumer to a single thread but instantiating a number of consumers equal to the number of partitions in the Redpanda topic. This way each consumer will pull messages from only one partition, and there's no risk of out-of-order consumption. To validate that there are no race conditions, an additional test has been added in cmd/consumer, which spawns multiple consumers and has them read 10000 messages, and validates that all messages are consumed and the final stats generated are correct. A dead letter queue has been created so if a message cannot be processed it will be sent to the DLQ and the consumer can continue to pull new messages from its partition.
 
 ### Batching
 
@@ -24,7 +22,7 @@ For ScyllaDB batching is a serious challenge. The light weight transactions (LWT
 
 ### 1. Docker compose (with in-memory database):
 
-Start the application with ```docker compose -f deployment/docker-compose.yml up --build -d```
+Start the application with ```docker compose -f deployment/docker-compose.yml up --scale wikistats-consumer=6 --build -d```
 
 Stop the application with ```docker compose -f deployment/docker-compose.yml down -v```
 
@@ -32,7 +30,7 @@ Stop the application with ```docker compose -f deployment/docker-compose.yml dow
 
 Edit the .env file and add ```DATABASE_TYPE=scylla```
 
-Start the application and a 3 node ScyllaDB cluster with ```docker compose -f deployment/docker-compose.yml --profile scylla up --build -d```
+Start the application and a 3 node ScyllaDB cluster with ```docker compose -f deployment/docker-compose.yml --profile scylla up --scale wikistats-consumer=6 --build -d```
 
 Stop the application with ```docker compose -f deployment/docker-compose.yml --profile scylla down``` (or ```docker compose -f deployment/docker-compose.yml --profile scylla down -v``` to clear the database)
 

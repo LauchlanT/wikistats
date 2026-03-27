@@ -43,11 +43,10 @@ type WikimediaConsumer struct {
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
 	return &WikimediaConsumer{
-		rpTimeout:     cfg.RPTimeout,
-		dbTimeout:     cfg.DBTimeout,
-		consumerCount: cfg.ConsumerThreadCount,
-		retryLimit:    cfg.RetryLimit,
-		retryDelay:    cfg.RetryDelay,
+		rpTimeout:  cfg.RPTimeout,
+		dbTimeout:  cfg.DBTimeout,
+		retryLimit: cfg.RetryLimit,
+		retryDelay: cfg.RetryDelay,
 	}, nil
 }
 
@@ -78,24 +77,13 @@ func (c *WikimediaConsumer) Consume(ctx context.Context, db database.Repository,
 		if err != nil {
 			return fmt.Errorf("processing records: %w", err)
 		}
-		for i, record := range records {
-			if i >= stored {
-				break
-			}
-			if err := rp.CommitRecords(ctx, record); err != nil {
-				log.Printf("Error committing record: %v", err)
-				// Don't continue committing if there's an error
-				// Break and leave offset at the failed commit
-				// The message will re-process next time it's polled
-				break
-			} else {
-				metricEventsConsumed.Inc()
-				metricEventsProcessed.Inc()
-			}
+		if err := rp.CommitRecords(ctx, records[0:stored]...); err != nil {
+			return fmt.Errorf("committing records: %w", err)
 		}
-		// An event failed to process even after retries
-		// Log the failure and send to DLQ
+		metricEventsConsumed.Add(float64(stored))
+		metricEventsProcessed.Add(float64(stored))
 		if stored < len(records) {
+			metricEventsConsumed.Inc()
 			metricEventsFailed.Inc()
 			if err := c.sendToDLQ(ctx, records[stored], rp); err != nil {
 				log.Printf("Error sending message to DLQ: %v", err)
