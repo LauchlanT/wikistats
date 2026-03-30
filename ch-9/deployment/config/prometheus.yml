@@ -1,0 +1,10 @@
+scrape_configs:
+  - job_name: 'producer'
+    static_configs:
+      - targets: ['producer:2112']
+  - job_name: 'consumer'
+    dns_sd_configs:
+      - names: ['wikistats-consumer']
+        type: 'A'
+        port: 2112
+        refresh_interval: 15s
