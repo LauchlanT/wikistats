@@ -9,7 +9,7 @@ metadata:
   name: wikistats-producer
 spec:
   containers:
-    - image: ghcr.io/lauchlant/wikistats/ch-9-producer:latest
+    - image: ghcr.io/lauchlant/wikistats-ch-9-producer:latest
       name: wikistats-producer
       securityContext:
         readOnlyRootFilesystem: true

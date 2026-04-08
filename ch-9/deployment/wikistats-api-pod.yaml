@@ -9,7 +9,7 @@ metadata:
   name: wikistats-api
 spec:
   containers:
-    - image: ghcr.io/lauchlant/wikistats/ch-9-api:latest
+    - image: ghcr.io/lauchlant/wikistats-ch-9-api:latest
       name: wikistats-api
       ports:
         - containerPort: 7000

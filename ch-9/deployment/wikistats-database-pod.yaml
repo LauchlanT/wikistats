@@ -9,7 +9,7 @@ metadata:
   name: wikistats-database
 spec:
   containers:
-    - image: ghcr.io/lauchlant/wikistats/ch-9-database:latest
+    - image: ghcr.io/lauchlant/wikistats-ch-9-database:latest
       name: wikistats-database
       securityContext:
         readOnlyRootFilesystem: true
