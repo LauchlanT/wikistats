@@ -169,7 +169,7 @@ jobs:
           RAW_TAGS: ${{ steps.meta.outputs.tags }}
           RAW_LABELS: ${{ steps.meta.outputs.labels }}
         run: |
-          base_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}"
+          base_image=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}" | tr '[:upper:]' '[:lower:]')
           shopt -s nullglob
           dockerfiles=(./${{ matrix.part }}/build/*.Dockerfile)
           if [ ${#dockerfiles[@]} -eq 0 ]; then
@@ -177,7 +177,7 @@ jobs:
             exit 1
           fi
           for dockerfile in "${dockerfiles[@]}"; do
-            service=$(basename "$dockerfile" .Dockerfile)
+            service=$(basename "$dockerfile" .Dockerfile | tr '[:upper:]' '[:lower:]')
             tag_args=()
             while IFS= read -r tag || [ -n "$tag" ]; do
               [ -z "$tag" ] && continue

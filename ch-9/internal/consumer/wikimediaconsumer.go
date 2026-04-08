@@ -34,11 +34,10 @@ func init() {
 }
 
 type WikimediaConsumer struct {
-	rpTimeout     time.Duration
-	dbTimeout     time.Duration
-	consumerCount int
-	retryLimit    int
-	retryDelay    time.Duration
+	rpTimeout  time.Duration
+	dbTimeout  time.Duration
+	retryLimit int
+	retryDelay time.Duration
 }
 
 func NewWikimediaConsumer(cfg config.ConsumerConfig) (*WikimediaConsumer, error) {
