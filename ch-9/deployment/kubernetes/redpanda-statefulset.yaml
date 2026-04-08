@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+spec:
+  serviceName: "redpanda"
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      securityContext:
+        fsGroup: 101 
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:v23.3.13
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+          resources:
+            limits:
+              cpu: 1
+              memory: 2Gi 
+            requests:
+              cpu: 1
+              memory: 2Gi
+          env:
+            - name: REDPANDA_MEMORY
+              value: "1G"
+            - name: REDPANDA_SMP
+              value: "1"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Extract the number from the end of the pod name (e.g., redpanda-0 -> 0)
+              export NODE_ID=${HOSTNAME##*-}
+              
+              # Start using 'rpk redpanda start' instead of just 'redpanda start'
+              exec rpk redpanda start \
+                --node-id $NODE_ID \
+                --kafka-addr internal://0.0.0.0:9092 \
+                --advertise-kafka-addr internal://${HOSTNAME}.redpanda:9092 \
+                --rpc-addr 0.0.0.0:33145 \
+                --advertise-rpc-addr ${HOSTNAME}.redpanda:33145 \
+                --seeds redpanda-0.redpanda:33145 \
+                --overprovisioned \
+                --reserve-memory 0M
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "rpk topic list --brokers localhost:9092 >/dev/null 2>&1 || exit 1"
+            failureThreshold: 5
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: datadir
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: datadir
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 2Gi

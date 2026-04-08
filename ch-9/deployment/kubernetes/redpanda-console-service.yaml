@@ -8,6 +8,7 @@ metadata:
     io.kompose.service: redpanda-console
   name: redpanda-console
 spec:
+  type: NodePort
   ports:
     - name: "8080"
       port: 8080

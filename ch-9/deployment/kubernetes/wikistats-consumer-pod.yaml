@@ -15,4 +15,7 @@ spec:
         readOnlyRootFilesystem: true
         runAsGroup: 1000
         runAsUser: 1000
+      env:
+        - name: REDPANDA_HOST
+          value: "redpanda-0.redpanda:9092,redpanda-1.redpanda:9092,redpanda-2.redpanda:9092"
   restartPolicy: OnFailure

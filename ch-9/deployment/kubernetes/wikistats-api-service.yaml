@@ -8,6 +8,7 @@ metadata:
     io.kompose.service: wikistats-api
   name: wikistats-api
 spec:
+  type: NodePort
   ports:
     - name: "7000"
       port: 7000
