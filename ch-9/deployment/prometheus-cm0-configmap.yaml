@@ -1,0 +1,20 @@
+apiVersion: v1
+data:
+  prometheus.yml: |-
+    scrape_configs:
+      - job_name: 'producer'
+        static_configs:
+          - targets: ['producer:2112']
+      - job_name: 'consumer'
+        dns_sd_configs:
+          - names: ['wikistats-consumer']
+            type: 'A'
+            port: 2112
+            refresh_interval: 15s
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus-cm0

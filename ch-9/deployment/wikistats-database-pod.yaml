@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kompose.cmd: ../../../kompose convert -f docker-compose.yml
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: wikistats-database
+  name: wikistats-database
+spec:
+  containers:
+    - image: ghcr.io/lauchlant/wikistats/ch-9-database:latest
+      name: wikistats-database
+      securityContext:
+        readOnlyRootFilesystem: true
+        runAsGroup: 1000
+        runAsUser: 1000
+  hostname: database
+  restartPolicy: OnFailure

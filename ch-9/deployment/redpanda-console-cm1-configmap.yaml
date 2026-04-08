@@ -1,0 +1,10 @@
+apiVersion: v1
+data:
+  redpanda-console.yml: "kafka:\n  brokers: \n    - \"redpanda-node1:9092\"\n    - \"redpanda-node2:9092\"\n    - \"redpanda-node3:9092\"\n\nserde:\n  protobuf:\n    enabled: true\n    mappings:\n      - topicName: \"wikistats.messages\"\n        valueProtoType: \"models.Exported\"\n    fileSystem:\n      enabled: true\n      paths: [\"/etc/protos\"]"
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: redpanda-console
+  name: redpanda-console-cm1

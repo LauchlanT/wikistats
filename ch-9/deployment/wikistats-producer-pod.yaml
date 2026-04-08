@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kompose.cmd: ../../../kompose convert -f docker-compose.yml
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: wikistats-producer
+  name: wikistats-producer
+spec:
+  containers:
+    - image: ghcr.io/lauchlant/wikistats/ch-9-producer:latest
+      name: wikistats-producer
+      securityContext:
+        readOnlyRootFilesystem: true
+        runAsGroup: 1000
+        runAsUser: 1000
+  hostname: producer
+  restartPolicy: OnFailure
