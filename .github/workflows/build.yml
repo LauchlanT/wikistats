@@ -135,7 +135,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.part }}
           tags: |
             type=sha,prefix=,suffix=,format=short
             type=raw,value=latest,enable=true
@@ -169,7 +169,7 @@ jobs:
           RAW_TAGS: ${{ steps.meta.outputs.tags }}
           RAW_LABELS: ${{ steps.meta.outputs.labels }}
         run: |
-          base_image=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.part }}" | tr '[:upper:]' '[:lower:]')
+          base_image=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.part }}" | tr '[:upper:]' '[:lower:]')
           shopt -s nullglob
           dockerfiles=(./${{ matrix.part }}/build/*.Dockerfile)
           if [ ${#dockerfiles[@]} -eq 0 ]; then
