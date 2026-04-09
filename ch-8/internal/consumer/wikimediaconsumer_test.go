@@ -90,7 +90,7 @@ func TestProcessRecord(t *testing.T) {
 
 			// Process each record directly
 			for _, record := range tt.records {
-				err := consumer.processRecord(context.Background(), db, record)
+				_, err := consumer.processRecords(context.Background(), db, record)
 				if err != nil {
 					t.Logf("Processing error (expected for invalid records): %v", err)
 				}
@@ -134,7 +134,7 @@ func TestProcessRecordTimeout(t *testing.T) {
 		dbTimeout: 1 * time.Nanosecond,
 	}
 	record := createRecord(t, "msg1", "alice", "server1", false)
-	err = consumer.processRecord(context.Background(), db, record)
+	_, err = consumer.processRecords(context.Background(), db, record)
 	if err == nil {
 		t.Error("Expected timeout error, got nil")
 	}

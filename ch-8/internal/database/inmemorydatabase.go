@@ -67,29 +67,35 @@ func (i *InMemoryDatabase) AddUser(ctx context.Context, username string, passwor
 	return nil
 }
 
-func (i *InMemoryDatabase) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
+func (i *InMemoryDatabase) UpdateDatabase(ctx context.Context, u ...StatsUpdate) (int, error) {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("updating database: %w", ctx.Err())
+		return 0, fmt.Errorf("updating database: %w", ctx.Err())
 	default:
 	}
-	if u.Id == "" || u.User == "" || u.Server == "" {
-		return fmt.Errorf("inserting empty values %+v", u)
+	if len(u) == 0 {
+		return 0, nil
+	}
+	for _, record := range u {
+		if record.Id == "" || record.User == "" || record.Server == "" {
+			return 0, fmt.Errorf("inserting empty values %+v", u)
+		}
 	}
 	i.lock.Lock()
 	defer i.lock.Unlock()
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("updating database: %w", err)
+		return 0, fmt.Errorf("updating database: %w", err)
 	}
-
-	i.messages[u.Id] = struct{}{}
-	if u.IsBot {
-		i.bots[u.User] = struct{}{}
-	} else {
-		i.users[u.User] = struct{}{}
+	for _, record := range u {
+		i.messages[record.Id] = struct{}{}
+		if record.IsBot {
+			i.bots[record.User] = struct{}{}
+		} else {
+			i.users[record.User] = struct{}{}
+		}
+		i.servers[record.Server] = struct{}{}
 	}
-	i.servers[u.Server] = struct{}{}
-	return nil
+	return len(u), nil
 }
 
 func (i *InMemoryDatabase) GetStats(ctx context.Context) (*Stats, error) {

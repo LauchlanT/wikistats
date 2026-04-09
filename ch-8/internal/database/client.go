@@ -57,19 +57,23 @@ func (g *grpcRepository) ValidateLogin(ctx context.Context, username string, pas
 	return nil
 }
 
-func (g *grpcRepository) UpdateDatabase(ctx context.Context, s StatsUpdate) error {
-	_, err := g.client.UpdateDatabase(ctx, &UpdateDatabaseRequest{
-		StatsUpdate: &StatsUpdateMsg{
-			Id:     s.Id,
-			User:   s.User,
-			Server: s.Server,
-			IsBot:  s.IsBot,
-		},
+func (g *grpcRepository) UpdateDatabase(ctx context.Context, s ...StatsUpdate) (int, error) {
+	updates := make([]*StatsUpdateMsg, len(s))
+	for i, record := range s {
+		updates[i] = &StatsUpdateMsg{
+			Id:     record.Id,
+			User:   record.User,
+			Server: record.Server,
+			IsBot:  record.IsBot,
+		}
+	}
+	resp, err := g.client.UpdateDatabase(ctx, &UpdateDatabaseRequest{
+		StatsUpdate: updates,
 	})
 	if err != nil {
-		return fmt.Errorf("updating database via RPC: %w", err)
+		return 0, fmt.Errorf("updating database via RPC: %w", err)
 	}
-	return nil
+	return int(resp.GetCount()), nil
 }
 
 // Do not expose to gRPC clients

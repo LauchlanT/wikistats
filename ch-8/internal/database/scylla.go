@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 	"wikistats/internal/config"
 
@@ -108,7 +109,7 @@ func (s *ScyllaDB) AddUser(ctx context.Context, username string, password string
 	return nil
 }
 
-func (s *ScyllaDB) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
+func (s *ScyllaDB) updateRecord(ctx context.Context, u StatsUpdate) error {
 	if u.Id == "" || u.User == "" || u.Server == "" {
 		return fmt.Errorf("inserting empty values %+v", u)
 	}
@@ -153,6 +154,62 @@ func (s *ScyllaDB) UpdateDatabase(ctx context.Context, u StatsUpdate) error {
 		}
 	}
 	return nil
+}
+
+func (s *ScyllaDB) UpdateDatabase(ctx context.Context, u ...StatsUpdate) (int, error) {
+	if len(u) == 0 {
+		return 0, nil
+	}
+	for _, record := range u {
+		if record.Id == "" || record.User == "" || record.Server == "" {
+			return 0, fmt.Errorf("inserting empty values %+v", u)
+		}
+	}
+	batch := s.session.NewBatch(gocql.LoggedBatch).WithContext(ctx)
+	for _, record := range u {
+		batch.Query(`INSERT INTO messages (id) VALUES (?) IF NOT EXISTS`, record.Id)
+		if record.IsBot {
+			batch.Query(`INSERT INTO bots (name) VALUES (?) IF NOT EXISTS`, record.User)
+		} else {
+			batch.Query(`INSERT INTO users (name) VALUES (?) IF NOT EXISTS`, record.User)
+		}
+		batch.Query(`INSERT INTO servers (name) VALUES (?) IF NOT EXISTS`, record.Server)
+	}
+	var iter gocql.Iter
+	applied, _, err := s.session.ExecuteBatchCAS(batch, &iter)
+	if err != nil {
+		return 0, fmt.Errorf("executing batch: %w", err)
+	}
+
+	// If not applied, batch may contain a value already in DB
+	if !applied {
+		// Try updating each record individually if so
+		for i, record := range u {
+			err := s.updateRecord(ctx, record)
+			if err != nil {
+				return i, fmt.Errorf("processing individual records from batch: %w", err)
+			}
+		}
+		return len(u), nil
+	}
+
+	for range len(u) {
+		// At this point the values are in the DB, so the best we can do is log errors
+		//	if the increments fail.
+		if err := s.incrementStat(ctx, "messagecount"); err != nil {
+			log.Printf("incrementing message count: %v", err)
+		}
+		if err := s.incrementStat(ctx, "usercount"); err != nil {
+			log.Printf("incrementing user count: %v", err)
+		}
+		if err := s.incrementStat(ctx, "servercount"); err != nil {
+			log.Printf("incrementing server count: %v", err)
+		}
+		if err := s.incrementStat(ctx, "botcount"); err != nil {
+			log.Printf("incrementing bot count: %v", err)
+		}
+	}
+	return len(u), nil
 }
 
 func (s *ScyllaDB) incrementStat(ctx context.Context, statName string) error {

@@ -1,3 +1,4 @@
+//nolint:all // Quick and dirty test, not meant to be robust
 package main
 
 import (

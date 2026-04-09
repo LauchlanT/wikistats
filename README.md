@@ -27,3 +27,7 @@ Update the application to use Protobufs for communicating with Redpanda. (Was do
 ch-7:
 
 Add Prometheus and Grafana for tracking metrics.
+
+ch-8:
+
+Have the consumer application spawn multiple consumer instances, and batch database writes.

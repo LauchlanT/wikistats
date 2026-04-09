@@ -23,16 +23,25 @@ type repositoryServer struct {
 }
 
 func (s *repositoryServer) UpdateDatabase(ctx context.Context, req *database.UpdateDatabaseRequest) (*database.UpdateDatabaseResponse, error) {
-	err := s.db.UpdateDatabase(ctx, database.StatsUpdate{
-		Id:     req.StatsUpdate.Id,
-		User:   req.StatsUpdate.User,
-		Server: req.StatsUpdate.Server,
-		IsBot:  req.StatsUpdate.IsBot,
-	})
-	if err != nil {
-		return nil, err
+	if req == nil || len(req.StatsUpdate) == 0 {
+		return &database.UpdateDatabaseResponse{Count: 0}, nil
 	}
-	return &database.UpdateDatabaseResponse{Success: true}, nil
+	updates := make([]database.StatsUpdate, len(req.StatsUpdate))
+	for i, record := range req.StatsUpdate {
+		updates[i] = database.StatsUpdate{
+			Id:     record.Id,
+			User:   record.User,
+			Server: record.Server,
+			IsBot:  record.IsBot,
+		}
+	}
+	count, err := s.db.UpdateDatabase(ctx, updates...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch update database: %w", err)
+	}
+	return &database.UpdateDatabaseResponse{
+		Count: int32(count),
+	}, nil
 }
 
 func (s *repositoryServer) GetStats(ctx context.Context, req *database.GetStatsRequest) (*database.GetStatsResponse, error) {

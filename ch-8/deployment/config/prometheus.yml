@@ -3,5 +3,8 @@ scrape_configs:
     static_configs:
       - targets: ['producer:2112']
   - job_name: 'consumer'
-    static_configs:
-      - targets: ['consumer:2112']
+    dns_sd_configs:
+      - names: ['wikistats-consumer']
+        type: 'A'
+        port: 2112
+        refresh_interval: 15s

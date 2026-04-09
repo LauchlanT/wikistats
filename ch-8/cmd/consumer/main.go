@@ -60,7 +60,9 @@ func run() error {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelShutdown()
 		log.Println("Shutting down metrics server...")
-		promServer.Shutdown(shutdownCtx)
+		if err := promServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down metrics server: %v", err)
+		}
 	}()
 
 	rp, err := kgo.NewClient(
@@ -82,18 +84,23 @@ func run() error {
 		err = errors.Join(err, db.Close())
 	}(db)
 
-	streamConsumer, err := consumer.NewWikimediaConsumer(cfg.Consumer)
-	if err != nil {
-		return fmt.Errorf("initializing consumer: %w", err)
-	}
-
-	if err := streamConsumer.Consume(ctx, db, rp); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil
-		}
-		return fmt.Errorf("consuming stream: %w", err)
+	if err := runConsumer(cfg.Consumer, ctx, db, &consumer.RPClientWrapper{Client: rp}); err != nil {
+		return err
 	}
 
 	log.Println("Application terminated gracefully")
+	return nil
+}
+
+func runConsumer(cfg config.ConsumerConfig, ctx context.Context, db database.Repository, rp consumer.RPClient) error {
+	streamConsumer, err := consumer.NewWikimediaConsumer(cfg)
+	if err != nil {
+		return fmt.Errorf("initializing consumer: %w", err)
+	}
+	if err := streamConsumer.Consume(ctx, db, rp); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("consuming stream: %w", err)
+		}
+	}
 	return nil
 }
