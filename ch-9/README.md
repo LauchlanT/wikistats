@@ -1,6 +1,6 @@
 A Docker application to consume data on recent Wikipedia changes from https://stream.wikimedia.org/v2/stream/recentchange and provide an API to view stats about the consumed streams. The application uses Redpanda to separate the producer, which pulls from the stream, and the consumer, which pushes to the database.
 
-### Minikube Info
+## Minikube Info
 
 The application is resource heavy, so starting Minikube with extra resources is also recommended with ```minikube start --cpus 4 --memory 8192``` (double check that Docker Desktop is configured to support this first)
 
