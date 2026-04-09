@@ -82,9 +82,19 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	active := false
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if active {
+			w.WriteHeader(http.StatusOK)
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	})
 	promServer := &http.Server{
 		Addr:    ":2112",
 		Handler: mux,
@@ -135,6 +145,8 @@ func run() error {
 		}(closer)
 	}
 
+	active = true
+	defer func() { active = false }()
 	if err := streamProducer.Produce(ctx, stream, rp); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/database"
 
@@ -87,6 +89,36 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	active := false
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if active {
+			w.WriteHeader(http.StatusOK)
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	statusServer := &http.Server{
+		Addr:    ":2112",
+		Handler: mux,
+	}
+	go func() {
+		if err := statusServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Status server error: %v", err)
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelShutdown()
+		log.Println("Shutting down status server...")
+		if err := statusServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down status server: %v", err)
+		}
+	}()
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
@@ -108,6 +140,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("connecting to port: %w", err)
 	}
+	active = true
+	defer func() { active = false }()
 	serverErr := make(chan error, 1)
 	go func() {
 		log.Println("gRPC server starting")
