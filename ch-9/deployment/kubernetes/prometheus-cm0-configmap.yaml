@@ -2,15 +2,18 @@ apiVersion: v1
 data:
   prometheus.yml: |-
     scrape_configs:
-      - job_name: 'producer'
-        static_configs:
-          - targets: ['producer:2112']
-      - job_name: 'consumer'
-        dns_sd_configs:
-          - names: ['wikistats-consumer']
-            type: 'A'
-            port: 2112
-            refresh_interval: 15s
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: wikistats-(producer|consumer)
+          - source_labels: [__address__]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: $1:2112
+            target_label: __address__
 kind: ConfigMap
 metadata:
   annotations:
