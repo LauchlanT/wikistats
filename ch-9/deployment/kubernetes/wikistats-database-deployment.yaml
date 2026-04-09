@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikistats-database
+  labels:
+    app: wikistats-database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikistats-database
+  template:
+    metadata:
+      labels:
+        app: wikistats-database
+    spec:
+      restartPolicy: Always 
+      containers:
+        - name: wikistats-database
+          image: ghcr.io/lauchlant/wikistats-ch-9-database:latest
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsUser: 1000
+          ports:
+            - containerPort: 2112
+              protocol: TCP     
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 2112
+            initialDelaySeconds: 60
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 2112
+            initialDelaySeconds: 60
+          

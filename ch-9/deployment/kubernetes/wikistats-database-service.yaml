@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wikistats-database
+  name: wikistats-database
+spec:
+  type: NodePort
+  ports:
+    - name: rpc
+      port: 50051
+      targetPort: 50051
+  selector:
+    app: wikistats-database
