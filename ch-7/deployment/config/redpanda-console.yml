@@ -1,0 +1,15 @@
+kafka:
+  brokers: 
+    - "redpanda-node1:9092"
+    - "redpanda-node2:9092"
+    - "redpanda-node3:9092"
+
+serde:
+  protobuf:
+    enabled: true
+    mappings:
+      - topicName: "wikistats.messages"
+        valueProtoType: "models.Exported"
+    fileSystem:
+      enabled: true
+      paths: ["/etc/protos"]

@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 	"wikistats/internal/config"
 	"wikistats/internal/producer"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -78,6 +81,27 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	promServer := &http.Server{
+		Addr:    ":2112",
+		Handler: mux,
+	}
+	go func() {
+		if err := promServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Metrics server error: %v", err)
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelShutdown()
+		log.Println("Shutting down metrics server...")
+		if err := promServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down metrics server: %v", err)
+		}
+	}()
 
 	if err := configureTopic(ctx, cfg); err != nil {
 		return fmt.Errorf("creating topic: %w", err)

@@ -17,10 +17,26 @@ import (
 	"wikistats/internal/config"
 	"wikistats/internal/models"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/proto"
 )
+
+var (
+	metricEventsConsumed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "producer_events_consumed",
+		Help: "Total number of events consumed from the Wikimedia recent changes stream",
+	})
+	metricEventsPersisted = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "producer_events_persisted",
+		Help: "Total number of events persisted to Redpanda",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(metricEventsConsumed, metricEventsPersisted)
+}
 
 type WikimediaProducer struct {
 	url               string
@@ -97,6 +113,7 @@ func (p *WikimediaProducer) Produce(ctx context.Context, r io.Reader, rp recordP
 				log.Printf("Error parsing JSON: %v", err)
 				continue
 			}
+			metricEventsConsumed.Inc()
 			lastTimestamp = msg.Meta.DT
 			// Export key fields to protobuf and create record for Redpanda
 			exported := &models.Exported{Id: msg.Meta.ID, User: msg.User, Server: msg.ServerURL, IsBot: msg.Bot}
@@ -113,6 +130,8 @@ func (p *WikimediaProducer) Produce(ctx context.Context, r io.Reader, rp recordP
 				defer wg.Done()
 				if err != nil {
 					errChan <- fmt.Errorf("failed to produce offset %d: %w", r.Offset, err)
+				} else {
+					metricEventsPersisted.Inc()
 				}
 			})
 		}
