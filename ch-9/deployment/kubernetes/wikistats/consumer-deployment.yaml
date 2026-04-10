@@ -25,11 +25,9 @@ spec:
           ports:
             - containerPort: 2112
               protocol: TCP
-          env:
-            - name: REDPANDA_HOST
-              value: "redpanda-0.redpanda:9092,redpanda-1.redpanda:9092,redpanda-2.redpanda:9092" 
-            - name: DATABASE_HOST
-              value: "wikistats-database"       
+          envFrom:
+            - configMapRef:
+                name: wikistats-config      
           livenessProbe:
             httpGet:
               path: /healthz

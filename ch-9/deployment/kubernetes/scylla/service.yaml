@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scylla
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: scylla
+  ports:
+    - name: cql
+      port: 9042
+    - name: api
+      port: 10000
+    - name: shard-aware-cql
+      port: 19042
+    - name: internal-communication
+      port: 7000
+    - name: internal-communication-tls
+      port: 7001
+    - name: jmx
+      port: 7199

@@ -2,7 +2,7 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 ## Minikube Info
 
-The application is resource heavy, so starting Minikube with extra resources is also recommended with ```minikube start --cpus 4 --memory 8192``` (double check that Docker Desktop is configured to support this first)
+The application is resource heavy, so starting Minikube with extra resources is also recommended with ```minikube start --cpus 6 --memory 12288``` (double check that Docker Desktop is configured to support this first)
 
 Note that to run the application in Minikube, the max aio may need to be increased. If still using default aio settings, increase them with ```minikube ssh "sudo sysctl -w fs.aio-max-nr=1048576"```
 

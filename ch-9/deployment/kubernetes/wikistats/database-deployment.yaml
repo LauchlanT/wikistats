@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wikistats-producer
+  name: wikistats-database
   labels:
-    app: wikistats-producer
+    app: wikistats-database
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: wikistats-producer
+      app: wikistats-database
   template:
     metadata:
       labels:
-        app: wikistats-producer
+        app: wikistats-database
     spec:
       restartPolicy: Always 
       containers:
-        - name: wikistats-producer
-          image: ghcr.io/lauchlant/wikistats-ch-9-producer:latest
+        - name: wikistats-database
+          image: ghcr.io/lauchlant/wikistats-ch-9-database:latest
           securityContext:
             readOnlyRootFilesystem: true
             runAsGroup: 1000
@@ -25,17 +25,17 @@ spec:
           ports:
             - containerPort: 2112
               protocol: TCP
-          env:
-            - name: REDPANDA_HOST
-              value: "redpanda-0.redpanda:9092,redpanda-1.redpanda:9092,redpanda-2.redpanda:9092"          
+          envFrom:
+            - configMapRef:
+                name: wikistats-config
           livenessProbe:
             httpGet:
               path: /healthz
               port: 2112
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
           readinessProbe:
             httpGet:
               path: /readyz
               port: 2112
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
           

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wikistats-config
+data:
+  DATABASE_TYPE: "scylla"
+  DATABASE_HOST: "wikistats-database"
+  REDPANDA_HOST: "redpanda-0.redpanda:9092,redpanda-1.redpanda:9092,redpanda-2.redpanda:9092"
+  SCYLLA_HOSTS: "scylla-0.scylla,scylla-1.scylla,scylla-2.scylla"
+  SCYLLA_KEYSPACE: "wikistats"
+  STREAM_URL: "https://stream.wikimedia.org/v2/stream/recentchange"
