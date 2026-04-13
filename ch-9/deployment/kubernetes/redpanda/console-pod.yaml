@@ -14,6 +14,13 @@ spec:
           value: /etc/redpanda/redpanda-console.yml
       image: redpandadata/console:v3.5.3
       name: redpanda-console
+      resources:
+        limits:
+          cpu: 100m
+          memory: 100Mi
+        requests:
+          cpu: 10m
+          memory: 20Mi
       ports:
         - containerPort: 8080
           protocol: TCP

@@ -20,6 +20,13 @@ spec:
       containers:
         - image: prom/prometheus:v3.10.0
           name: prometheus
+          resources:
+            limits:
+              cpu: 100m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 50Mi
           volumeMounts:
             - mountPath: /etc/prometheus/prometheus.yml
               name: prometheus-cm0

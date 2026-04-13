@@ -25,6 +25,13 @@ spec:
       containers:
         - image: grafana/grafana:12.4.1
           name: grafana
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
           ports:
             - containerPort: 3000
               protocol: TCP
