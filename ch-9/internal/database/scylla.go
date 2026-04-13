@@ -90,7 +90,6 @@ func (s *ScyllaDB) MigrateDatabase(ctx context.Context) error {
 		"CREATE TABLE IF NOT EXISTS servers (name text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS users (name text PRIMARY KEY);",
 		"CREATE TABLE IF NOT EXISTS bots (name text PRIMARY KEY);",
-		"CREATE TABLE IF NOT EXISTS stats (stat text PRIMARY KEY, value counter);",
 		"CREATE TABLE IF NOT EXISTS accounts (username text PRIMARY KEY, password text);",
 	}
 	for _, q := range queries {
