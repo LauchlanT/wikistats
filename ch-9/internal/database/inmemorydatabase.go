@@ -76,11 +76,6 @@ func (i *InMemoryDatabase) UpdateDatabase(ctx context.Context, u ...StatsUpdate)
 	if len(u) == 0 {
 		return 0, nil
 	}
-	for _, record := range u {
-		if record.Id == "" || record.User == "" || record.Server == "" {
-			return 0, fmt.Errorf("inserting empty values %+v", u)
-		}
-	}
 	i.lock.Lock()
 	defer i.lock.Unlock()
 	if err := ctx.Err(); err != nil {
