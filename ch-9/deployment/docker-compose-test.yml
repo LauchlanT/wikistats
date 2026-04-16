@@ -76,7 +76,7 @@ services:
       - test-network
     
   redpanda-node1:
-    image: redpandadata/redpanda:v23.3.13
+    image: redpandadata/redpanda:v26.1.4
     container_name: redpanda-node1
     hostname: redpanda-node1
     security_opt:

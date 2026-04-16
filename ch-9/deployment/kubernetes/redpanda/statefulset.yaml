@@ -18,22 +18,17 @@ spec:
         fsGroup: 101 
       containers:
         - name: redpanda
-          image: redpandadata/redpanda:v23.3.13
+          image: redpandadata/redpanda:v26.1.4
           securityContext:
             runAsUser: 101
             runAsGroup: 101
           resources:
             limits:
               cpu: 1
-              memory: 2Gi 
+              memory: 1500Mi
             requests:
               cpu: 1
-              memory: 2Gi
-          env:
-            - name: REDPANDA_MEMORY
-              value: "1G"
-            - name: REDPANDA_SMP
-              value: "1"
+              memory: 1500Mi
           command:
             - /bin/sh
             - -c
@@ -50,6 +45,8 @@ spec:
                 --advertise-rpc-addr ${HOSTNAME}.redpanda:33145 \
                 --seeds redpanda-0.redpanda:33145 \
                 --overprovisioned \
+                --smp 1 \
+                --memory 1000M \
                 --reserve-memory 0M
           readinessProbe:
             tcpSocket:

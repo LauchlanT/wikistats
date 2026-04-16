@@ -12,7 +12,7 @@ spec:
     - env:
         - name: CONFIG_FILEPATH
           value: /etc/redpanda/redpanda-console.yml
-      image: redpandadata/console:v3.5.3
+      image: redpandadata/console:v3.7.1
       name: redpanda-console
       resources:
         limits:
