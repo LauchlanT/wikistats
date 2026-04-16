@@ -10,6 +10,15 @@ data:
         url: http://prometheus:9090
         isDefault: true
         editable: true
+      - name: ScyllaDB
+        type: hadesarchitect-cassandra-datasource
+        access: proxy
+        url: scylla-0.scylla:9042
+        editable: true
+        jsonData:
+          keyspace: wikistats
+          consistency: ONE
+          timeout: 10
 kind: ConfigMap
 metadata:
   annotations:

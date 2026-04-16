@@ -32,6 +32,9 @@ spec:
             requests:
               cpu: 10m
               memory: 100Mi
+          env:
+            - name: GF_PLUGINS_PREINSTALL_SYNC
+              value: "hadesarchitect-cassandra-datasource@3.2.0@https://github.com/HadesArchitect/GrafanaCassandraDatasource/releases/download/v3.2.0/hadesarchitect-cassandra-datasource-3.2.0.zip"
           ports:
             - containerPort: 3000
               protocol: TCP
