@@ -1,0 +1,28 @@
+apiVersion: v1
+data:
+  grafana.yml: |-
+    apiVersion: 1
+
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: true
+      - name: ScyllaDB
+        type: hadesarchitect-cassandra-datasource
+        access: proxy
+        url: scylla-0.scylla:9042
+        editable: true
+        jsonData:
+          keyspace: wikistats
+          consistency: ONE
+          timeout: 10
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: grafana
+  name: grafana-cm0

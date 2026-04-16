@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikistats-producer
+  labels:
+    app: wikistats-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikistats-producer
+  template:
+    metadata:
+      labels:
+        app: wikistats-producer
+    spec:
+      restartPolicy: Always 
+      containers:
+        - name: wikistats-producer
+          image: ghcr.io/lauchlant/wikistats-ch-9-producer:latest
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsUser: 1000
+          resources:
+            limits:
+              cpu: 500m
+              memory: 200Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          ports:
+            - containerPort: 2112
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: wikistats-config        
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 2112
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 2112
+            initialDelaySeconds: 30
+          

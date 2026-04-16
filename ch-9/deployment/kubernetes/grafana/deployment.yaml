@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ../../../kompose convert -f docker-compose.yml
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: grafana
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: grafana
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: ../../../kompose convert -f docker-compose.yml
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: grafana
+    spec:
+      containers:
+        - image: grafana/grafana:12.4.1
+          name: grafana
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          env:
+            - name: GF_PLUGINS_PREINSTALL_SYNC
+              value: "hadesarchitect-cassandra-datasource@3.2.0@https://github.com/HadesArchitect/GrafanaCassandraDatasource/releases/download/v3.2.0/hadesarchitect-cassandra-datasource-3.2.0.zip"
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/grafana/provisioning/datasources/datasource.yaml
+              name: grafana-cm0
+              subPath: datasource.yaml
+            - mountPath: /etc/grafana/provisioning/dashboards/provider.yaml
+              name: grafana-cm1
+              subPath: provider.yaml
+            - mountPath: /var/lib/grafana/dashboards/wikistats.json
+              name: grafana-cm2
+              subPath: wikistats.json
+            - mountPath: /var/lib/grafana
+              name: grafana-data
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            items:
+              - key: grafana.yml
+                path: datasource.yaml
+            name: grafana-cm0
+          name: grafana-cm0
+        - configMap:
+            items:
+              - key: grafana_provider.yml
+                path: provider.yaml
+            name: grafana-cm1
+          name: grafana-cm1
+        - configMap:
+            items:
+              - key: grafana_dashboard.json
+                path: wikistats.json
+            name: grafana-cm2
+          name: grafana-cm2
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-data

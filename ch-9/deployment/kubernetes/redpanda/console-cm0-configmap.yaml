@@ -1,0 +1,22 @@
+apiVersion: v1
+data:
+  models.proto: |-
+    syntax = "proto3";
+
+    option go_package = "github.com/lauchlant/wikistats/internal/models";
+
+    package models;
+
+    message Exported {
+    	string id = 1;
+    	string user = 2;
+    	string server = 3;
+    	bool is_bot = 4;
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: redpanda-console
+  name: redpanda-console-cm0

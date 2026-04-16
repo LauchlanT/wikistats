@@ -109,7 +109,8 @@ func TestConsumers_Race(t *testing.T) {
 	g, gctx := errgroup.WithContext(ctx)
 	for range cfg.Consumer.ConsumerCount {
 		g.Go(func() error {
-			return runConsumer(cfg.Consumer, gctx, db, rp)
+			active := false
+			return runConsumer(cfg.Consumer, gctx, db, rp, &active)
 		})
 	}
 

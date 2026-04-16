@@ -121,6 +121,10 @@ func (p *WikimediaProducer) Produce(ctx context.Context, r io.Reader, rp recordP
 			if err != nil {
 				log.Printf("Error marshalling exported values: %v", err)
 			}
+			if exported.Id == "" || exported.User == "" || exported.Server == "" {
+				log.Printf("Skipping record with missing values %v", exported)
+				continue
+			}
 			record := &kgo.Record{
 				Value: data,
 			}

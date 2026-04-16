@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: scylla
+spec:
+  serviceName: "scylla"
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: scylla
+  template:
+    metadata:
+      labels:
+        app: scylla
+    spec:
+      securityContext:
+        fsGroup: 999
+      initContainers:
+        - name: fix-permissions
+          image: busybox:latest
+          command: ["sh", "-c", "chown -R 999:999 /var/lib/scylla/data"]
+          securityContext:
+            runAsUser: 0 
+          volumeMounts:
+          - name: datadir
+            mountPath: /var/lib/scylla/data
+      containers:
+        - name: scylla
+          image: scylladb/scylla:2025.3
+          resources:
+            limits:
+              cpu: 1
+              memory: 2Gi 
+            requests:
+              cpu: 1
+              memory: 2Gi
+          args: [
+            "--seeds", "scylla-0.scylla.default.svc.cluster.local",
+            "--developer-mode", "1",
+            "--smp", "1",
+            "--memory", "400M",
+            "--overprovisioned", "1",
+            "--reserve-memory", "0",
+            "--api-address", "0.0.0.0",
+            "--reactor-backend=epoll"
+          ]
+          readinessProbe:
+            tcpSocket:
+              port: 9042
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "cqlsh -e 'SELECT cluster_name FROM system.local' >/dev/null 2>&1 || exit 1"
+            failureThreshold: 5
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: datadir
+              mountPath: /var/lib/scylla/data
+  volumeClaimTemplates:
+    - metadata:
+        name: datadir
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 2Gi

@@ -2,13 +2,31 @@ A Docker application to consume data on recent Wikipedia changes from https://st
 
 ## Running
 
-### 1. Docker compose (with in-memory database):
+### 1. Kubernetes in Minikube (with ScyllaDB database):
+
+Note that the application is resource heavy, and requires high aio limits. Ensure that Docker is configured to support the resource allocation Minikube will require.
+
+Start Minikube with ```minikube start --cpus 6 --memory 12288```
+
+Increase the aio limit with ```minikube ssh "sudo sysctl -w fs.aio-max-nr=1048576"```
+
+Optionally open the Minikube dashboard to monitor the cluster with ```minikube dashboard```
+
+Start the cluster with ```kubectl apply -Rf deployment/kubernetes```
+
+Terminate the cluster with ```kubectl delete -Rf deployment/kubernetes```
+
+Get URLs to access different services with ```minikube service servicename --url``` - replace servicename with the service to access, such as grafana, wikistats-api, prometheus, or redpanda-console.
+
+Terminate the Minikube instance with ```minikube delete```
+
+### 2. Docker compose (with in-memory database):
 
 Start the application with ```docker compose -f deployment/docker-compose.yml up --scale wikistats-consumer=6 --build -d```
 
 Stop the application with ```docker compose -f deployment/docker-compose.yml down -v```
 
-### 2. Docker compose (with ScyllaDB database):
+### 3. Docker compose (with ScyllaDB database):
 
 Edit the .env file and add ```DATABASE_TYPE=scylla```
 

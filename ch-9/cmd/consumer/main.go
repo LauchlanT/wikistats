@@ -43,9 +43,19 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	active := false
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if active {
+			w.WriteHeader(http.StatusOK)
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	})
 	promServer := &http.Server{
 		Addr:    ":2112",
 		Handler: mux,
@@ -84,7 +94,7 @@ func run() error {
 		err = errors.Join(err, db.Close())
 	}(db)
 
-	if err := runConsumer(cfg.Consumer, ctx, db, &consumer.RPClientWrapper{Client: rp}); err != nil {
+	if err := runConsumer(cfg.Consumer, ctx, db, &consumer.RPClientWrapper{Client: rp}, &active); err != nil {
 		return err
 	}
 
@@ -92,11 +102,13 @@ func run() error {
 	return nil
 }
 
-func runConsumer(cfg config.ConsumerConfig, ctx context.Context, db database.Repository, rp consumer.RPClient) error {
+func runConsumer(cfg config.ConsumerConfig, ctx context.Context, db database.Repository, rp consumer.RPClient, active *bool) error {
 	streamConsumer, err := consumer.NewWikimediaConsumer(cfg)
 	if err != nil {
 		return fmt.Errorf("initializing consumer: %w", err)
 	}
+	*active = true
+	defer func() { *active = false }()
 	if err := streamConsumer.Consume(ctx, db, rp); err != nil {
 		if !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("consuming stream: %w", err)

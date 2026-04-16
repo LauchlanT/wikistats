@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikistats-consumer
+  labels:
+    app: wikistats-consumer
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: wikistats-consumer
+  template:
+    metadata:
+      labels:
+        app: wikistats-consumer
+    spec:
+      restartPolicy: Always 
+      containers:
+        - name: wikistats-consumer
+          image: ghcr.io/lauchlant/wikistats-ch-9-consumer:latest
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsUser: 1000
+          resources:
+            limits:
+              cpu: 200m
+              memory: 100Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          ports:
+            - containerPort: 2112
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: wikistats-config      
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 2112
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 2112
+            initialDelaySeconds: 30
+          

@@ -103,7 +103,7 @@ services:
       - internal-network
   
   redpanda-node1:
-    image: redpandadata/redpanda:v23.3.13
+    image: redpandadata/redpanda:v26.1.4
     container_name: redpanda-node1
     hostname: redpanda-node1
     security_opt:
@@ -133,7 +133,7 @@ services:
       - monitoring
 
   redpanda-node2:
-    image: redpandadata/redpanda:v23.3.13
+    image: redpandadata/redpanda:v26.1.4
     container_name: redpanda-node2
     hostname: redpanda-node2
     security_opt:
@@ -166,7 +166,7 @@ services:
         condition: service_healthy
 
   redpanda-node3:
-    image: redpandadata/redpanda:v23.3.13
+    image: redpandadata/redpanda:v26.1.4
     container_name: redpanda-node3
     hostname: redpanda-node3
     security_opt:
@@ -199,7 +199,7 @@ services:
         condition: service_healthy
 
   redpanda-console:
-    image: redpandadata/console:v3.5.3
+    image: redpandadata/console:v3.7.1
     ports:
       - "8080:8080"
     environment:

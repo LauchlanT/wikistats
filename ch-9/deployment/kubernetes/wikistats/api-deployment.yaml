@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikistats-api
+  labels:
+    app: wikistats-api
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: wikistats-api
+  template:
+    metadata:
+      labels:
+        app: wikistats-api
+    spec:
+      restartPolicy: Always 
+      containers:
+        - name: wikistats-api
+          image: ghcr.io/lauchlant/wikistats-ch-9-api:latest
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsUser: 1000
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          ports:
+            - containerPort: 7000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: wikistats-config
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 7000
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 7000
+            initialDelaySeconds: 15
+          

@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kompose.cmd: ../../../kompose convert -f docker-compose.yml
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: redpanda-console
+  name: redpanda-console
+spec:
+  containers:
+    - env:
+        - name: CONFIG_FILEPATH
+          value: /etc/redpanda/redpanda-console.yml
+      image: redpandadata/console:v3.7.1
+      name: redpanda-console
+      resources:
+        limits:
+          cpu: 100m
+          memory: 100Mi
+        requests:
+          cpu: 10m
+          memory: 20Mi
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      volumeMounts:
+        - mountPath: /etc/protos/models/models.proto
+          name: redpanda-console-cm0
+          readOnly: true
+          subPath: models.proto
+        - mountPath: /etc/redpanda/redpanda-console.yml
+          name: redpanda-console-cm1
+          readOnly: true
+          subPath: redpanda-console.yml
+  restartPolicy: OnFailure
+  volumes:
+    - configMap:
+        items:
+          - key: models.proto
+            path: models.proto
+        name: redpanda-console-cm0
+      name: redpanda-console-cm0
+    - configMap:
+        items:
+          - key: redpanda-console.yml
+            path: redpanda-console.yml
+        name: redpanda-console-cm1
+      name: redpanda-console-cm1
